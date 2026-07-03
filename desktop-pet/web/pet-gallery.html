@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Pet Gallery</title>
+  <link rel="stylesheet" href="/desktop-pet/pet-gallery.css">
+</head>
+<body>
+  <main class="manager-shell">
+    <header class="manager-header">
+      <div>
+        <h1>Pet Gallery</h1>
+        <p>Manage installed skins and install PetDeX pets for Desktop Companion.</p>
+      </div>
+      <button class="secondary-button" id="refreshButton" type="button">Refresh</button>
+    </header>
+
+    <section class="manager-toolbar" aria-label="Pet controls">
+      <div class="tabs" role="tablist" aria-label="Pet sections">
+        <button class="tab-button is-active" id="installedTab" type="button" role="tab" aria-selected="true" aria-controls="installedPanel">Installed</button>
+        <button class="tab-button" id="galleryTab" type="button" role="tab" aria-selected="false" aria-controls="galleryPanel">Gallery</button>
+      </div>
+      <label class="search-field">
+        <span>Search</span>
+        <input id="searchInput" type="search" autocomplete="off" spellcheck="false" placeholder="Name, slug, kind, author">
+      </label>
+    </section>
+
+    <div class="status-line" id="statusLine" role="status" aria-live="polite"></div>
+
+    <section class="manager-panel is-active" id="installedPanel" role="tabpanel" aria-labelledby="installedTab">
+      <div class="section-head">
+        <h2>Installed</h2>
+        <p id="installedCount">Loading skins...</p>
+      </div>
+      <div class="pet-grid" id="installedGrid"></div>
+    </section>
+
+    <section class="manager-panel" id="galleryPanel" role="tabpanel" aria-labelledby="galleryTab">
+      <div class="section-head">
+        <h2>PetDeX Gallery</h2>
+        <p id="galleryCount">Search or browse installable pets.</p>
+      </div>
+      <div class="pet-grid" id="galleryGrid"></div>
+      <div class="pager">
+        <button class="secondary-button" id="prevButton" type="button">Previous</button>
+        <span id="pageStatus"></span>
+        <button class="secondary-button" id="nextButton" type="button">Next</button>
+      </div>
+    </section>
+  </main>
+  <script src="/desktop-pet/pet-gallery.js"></script>
+</body>
+</html>

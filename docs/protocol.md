@@ -215,6 +215,44 @@ current WebUI frontend state:
 - approval and clarification rows use attention metadata exposed by WebUI
   session rows.
 
+## `GET /api/pet/skins`
+
+Lists Desktop Companion's bundled skins plus installed Hermes pets from
+`<HERMES_HOME>/pets`, defaulting to `~/.hermes/pets`.
+
+Hermes pet entries use `id: "hermes-<slug>"` and expose their spritesheet
+through `/api/pet/hermes-pets/<slug>/<spritesheet>`. Current 8-column × 9-row
+PetDeX sheets and older 9-column × 8-row sheets are both mapped into the Desktop
+Companion state names expected by the pet renderer.
+
+## `GET /api/pet/gallery`
+
+Searches the PetDeX manifest and annotates each result with local install state.
+Results are paginated with `offset` and `limit`; `q` filters by slug, display
+name, kind, or submitter. Compatibility is `unchecked` before install,
+`supported` when the installed spritesheet is renderable by Desktop Companion,
+and `unsupported` when the pet exists locally but does not match a supported
+spritesheet layout.
+
+## `POST /api/pet/gallery/install`
+
+Installs a PetDeX pet by delegating to the local `hermes pets install <slug>`
+command. The sidecar then re-reads `<HERMES_HOME>/pets/<slug>` and returns the
+installed state plus a renderable skin manifest when the spritesheet is
+supported.
+
+```json
+{
+  "slug": "panam"
+}
+```
+
+## `POST /api/pet/gallery/remove`
+
+Removes an installed Hermes pet by delegating to
+`hermes pets remove <slug>`. Bundled Desktop Companion skins are not removable
+through this route.
+
 ## `POST /api/pet/open_session`
 
 Queues an `open_session` command for the WebUI adapter and asks the operating

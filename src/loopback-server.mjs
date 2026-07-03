@@ -1,7 +1,7 @@
 import http from 'node:http';
 import { spawn } from 'node:child_process';
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
-import { readFile, stat } from 'node:fs/promises';
+import { readdir, readFile, stat } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -20,11 +20,42 @@ const PET_ACTION_TTL_MS = 60_000;
 const PET_ACTION_MAX_COMMANDS = 50;
 const PET_ACTION_WAIT_MS = 7_000;
 const PET_SNAPSHOT_ATTENTION_TTL_MS = 30_000;
+const PET_FRAME_WIDTH = 192;
+const PET_FRAME_HEIGHT = 208;
+const PET_FRAMES_PER_STATE = 6;
+const PET_GALLERY_MANIFEST_URL = 'https://petdex.dev/api/manifest';
+const PET_GALLERY_CACHE_MS = 5 * 60 * 1000;
+const PET_GALLERY_DEFAULT_LIMIT = 12;
+const PET_GALLERY_MAX_LIMIT = 48;
+const CODEX_PET_ROWS = ['idle', 'running-right', 'running-left', 'waving', 'jumping', 'failed', 'waiting', 'running', 'review'];
+const CODEX_PET_FRAMES_BY_STATE = {
+  idle: 6,
+  'running-right': 8,
+  'running-left': 8,
+  waving: 4,
+  jumping: 5,
+  failed: 8,
+  waiting: 6,
+  running: 6,
+  review: 6
+};
+const LEGACY_PET_ROW_BY_STATE = {
+  idle: 0,
+  'running-right': 2,
+  'running-left': 2,
+  waving: 1,
+  jumping: 5,
+  failed: 3,
+  waiting: 0,
+  running: 2,
+  review: 4
+};
 const DEFAULT_PREFERENCES = Object.freeze({
   enabled: true,
   allow_direct_send: false,
   allow_inline_action_responses: false
 });
+let petGalleryCache = null;
 
 function parseAllowedOrigins(value) {
   if (!value) return null;
@@ -178,6 +209,14 @@ function safeStaticPath(root, requestPath) {
   const relative = path.relative(root, target);
   if (relative.startsWith('..') || path.isAbsolute(relative)) return null;
   if (relative.split(path.sep).some((part) => part.startsWith('.'))) return null;
+  return target;
+}
+
+function safeChildPath(root, requestPath) {
+  if (!requestPath || String(requestPath).includes('\0')) return null;
+  const target = path.resolve(root, String(requestPath));
+  const relative = path.relative(root, target);
+  if (relative.startsWith('..') || path.isAbsolute(relative)) return null;
   return target;
 }
 
@@ -424,22 +463,529 @@ async function focusOrOpenBrowserUrl(url, origin, options = {}) {
   return normalizeFocusResult({ focused: opened, opened, reused: false });
 }
 
+function safePetSlug(value) {
+  const slug = String(value || '').trim();
+  if (slug.includes('/') || slug.includes('\\')) return '';
+  return /^[A-Za-z0-9_-]{1,128}$/.test(slug) ? slug : '';
+}
+
+function safeSkinId(value) {
+  const id = String(value || '').trim();
+  return /^[A-Za-z0-9_-]{1,128}$/.test(id) ? id : '';
+}
+
+function hermesPetsRoot(options = {}) {
+  if (Object.prototype.hasOwnProperty.call(options, 'hermesPetsDir')) {
+    return options.hermesPetsDir ? path.resolve(String(options.hermesPetsDir)) : null;
+  }
+  const configured = process.env.HERMES_DESKTOP_COMPANION_HERMES_PETS_DIR || process.env.HERMES_PETS_DIR;
+  if (configured) return path.resolve(configured);
+  return path.join(process.env.HERMES_HOME || path.join(os.homedir(), '.hermes'), 'pets');
+}
+
+async function readJsonFile(filePath) {
+  try {
+    return JSON.parse(await readFile(filePath, 'utf8'));
+  } catch (_) {
+    return {};
+  }
+}
+
+async function resolveHermesPet(root, slug) {
+  const safeSlug = safePetSlug(slug);
+  if (!root || !safeSlug) return null;
+  const directory = path.join(root, safeSlug);
+  const relative = path.relative(root, directory);
+  if (relative.startsWith('..') || path.isAbsolute(relative)) return null;
+
+  try {
+    const info = await stat(directory);
+    if (!info.isDirectory()) return null;
+  } catch (_) {
+    return null;
+  }
+
+  const manifest = await readJsonFile(path.join(directory, 'pet.json'));
+  const declared = String(manifest.spritesheetPath || '').trim();
+  const candidates = [];
+  if (declared) {
+    const declaredPath = safeChildPath(directory, declared);
+    if (declaredPath) candidates.push(declaredPath);
+  }
+  for (const name of ['spritesheet.webp', 'spritesheet.png', 'sprite.webp', 'sprite.png']) {
+    candidates.push(path.join(directory, name));
+  }
+
+  for (const spritesheet of candidates) {
+    try {
+      const info = await stat(spritesheet);
+      if (info.isFile()) {
+        return {
+          slug: safeSlug,
+          manifest,
+          directory,
+          spritesheet
+        };
+      }
+    } catch (_) {}
+  }
+  return null;
+}
+
+function pngDimensions(buffer) {
+  if (buffer.length < 24) return null;
+  if (
+    buffer[0] !== 0x89 || buffer[1] !== 0x50 || buffer[2] !== 0x4e || buffer[3] !== 0x47
+    || buffer[4] !== 0x0d || buffer[5] !== 0x0a || buffer[6] !== 0x1a || buffer[7] !== 0x0a
+    || buffer.toString('ascii', 12, 16) !== 'IHDR'
+  ) {
+    return null;
+  }
+  return { width: buffer.readUInt32BE(16), height: buffer.readUInt32BE(20) };
+}
+
+function webpDimensions(buffer) {
+  if (buffer.length < 30 || buffer.toString('ascii', 0, 4) !== 'RIFF' || buffer.toString('ascii', 8, 12) !== 'WEBP') {
+    return null;
+  }
+  const chunk = buffer.toString('ascii', 12, 16);
+  if (chunk === 'VP8X' && buffer.length >= 30) {
+    return {
+      width: 1 + buffer.readUIntLE(24, 3),
+      height: 1 + buffer.readUIntLE(27, 3)
+    };
+  }
+  if (chunk === 'VP8L' && buffer.length >= 25 && buffer[20] === 0x2f) {
+    const b1 = buffer[21], b2 = buffer[22], b3 = buffer[23], b4 = buffer[24];
+    return {
+      width: 1 + (((b2 & 0x3f) << 8) | b1),
+      height: 1 + (((b4 & 0x0f) << 10) | (b3 << 2) | ((b2 & 0xc0) >> 6))
+    };
+  }
+  if (chunk === 'VP8 ' && buffer.length >= 30 && buffer[23] === 0x9d && buffer[24] === 0x01 && buffer[25] === 0x2a) {
+    return {
+      width: buffer.readUInt16LE(26) & 0x3fff,
+      height: buffer.readUInt16LE(28) & 0x3fff
+    };
+  }
+  return null;
+}
+
+async function imageDimensions(filePath) {
+  try {
+    const buffer = await readFile(filePath);
+    return pngDimensions(buffer) || webpDimensions(buffer);
+  } catch (_) {
+    return null;
+  }
+}
+
+function petLayoutForDimensions(dimensions) {
+  const width = Number(dimensions && dimensions.width || 0);
+  const height = Number(dimensions && dimensions.height || 0);
+  if (!Number.isInteger(width) || !Number.isInteger(height) || width <= 0 || height <= 0) return null;
+  if (width % PET_FRAME_WIDTH !== 0 || height % PET_FRAME_HEIGHT !== 0) return null;
+  const columns = width / PET_FRAME_WIDTH;
+  const rows = height / PET_FRAME_HEIGHT;
+  if (!Number.isInteger(columns) || !Number.isInteger(rows) || columns < 1 || rows < 1) return null;
+  const codexRows = rows >= CODEX_PET_ROWS.length;
+  const rowForState = rows >= CODEX_PET_ROWS.length
+    ? Object.fromEntries(CODEX_PET_ROWS.map((name, row) => [name, row]))
+    : LEGACY_PET_ROW_BY_STATE;
+  return {
+    columns,
+    rows,
+    frameWidth: PET_FRAME_WIDTH,
+    frameHeight: PET_FRAME_HEIGHT,
+    states: CODEX_PET_ROWS.map((name) => ({
+      name,
+      row: Math.max(0, Math.min(rows - 1, Number(rowForState[name] || 0))),
+      frames: Math.max(1, Math.min(codexRows ? CODEX_PET_FRAMES_BY_STATE[name] : PET_FRAMES_PER_STATE, columns))
+    }))
+  };
+}
+
+async function hermesPetSkin(root, slug) {
+  const pet = await resolveHermesPet(root, slug);
+  if (!pet) return null;
+  const displayName = String(pet.manifest.displayName || pet.manifest.name || pet.slug).trim() || pet.slug;
+  const description = String(pet.manifest.description || '').trim();
+  const layout = petLayoutForDimensions(await imageDimensions(pet.spritesheet));
+  if (!layout) return null;
+  const spriteName = path.basename(pet.spritesheet);
+  return {
+    id: `hermes-${pet.slug}`,
+    displayName,
+    description,
+    source: 'hermes-pets',
+    hermesPetSlug: pet.slug,
+    spritesheetUrl: `/api/pet/hermes-pets/${encodeURIComponent(pet.slug)}/${encodeURIComponent(spriteName)}`,
+    layout
+  };
+}
+
+async function hermesPetSkins(options = {}) {
+  const root = hermesPetsRoot(options);
+  if (!root) return [];
+  let entries = [];
+  try {
+    entries = await readdir(root, { withFileTypes: true });
+  } catch (_) {
+    return [];
+  }
+  const skins = [];
+  for (const entry of entries) {
+    if (!entry.isDirectory()) continue;
+    const slug = safePetSlug(entry.name);
+    if (!slug) continue;
+    const skin = await hermesPetSkin(root, slug);
+    if (skin) skins.push(skin);
+  }
+  return skins;
+}
+
+async function installedHermesPetSlugs(options = {}) {
+  const root = hermesPetsRoot(options);
+  if (!root) return new Set();
+  let entries = [];
+  try {
+    entries = await readdir(root, { withFileTypes: true });
+  } catch (_) {
+    return new Set();
+  }
+  return new Set(entries.filter((entry) => entry.isDirectory()).map((entry) => safePetSlug(entry.name)).filter(Boolean));
+}
+
 async function petSkins() {
   const ids = ['keeper', 'shiba', 'courier'];
   const skins = [];
   for (const id of ids) {
     try {
-      const raw = await readFile(path.join(PETS_ROOT, id, 'pet.json'), 'utf8');
+      const directory = path.join(PETS_ROOT, id);
+      const raw = await readFile(path.join(directory, 'pet.json'), 'utf8');
       const manifest = JSON.parse(raw);
-      skins.push({
+      const declared = String(manifest.spritesheetPath || 'spritesheet.webp').trim() || 'spritesheet.webp';
+      const spritesheet = safeChildPath(directory, declared) || path.join(directory, 'spritesheet.webp');
+      const layout = petLayoutForDimensions(await imageDimensions(spritesheet));
+      const skin = {
         id: String(manifest.id || id),
         displayName: String(manifest.displayName || manifest.id || id),
         description: String(manifest.description || ''),
-        spritesheetUrl: `/extensions/pets/${id}/spritesheet.webp`
-      });
+        spritesheetUrl: `/extensions/pets/${id}/${encodeURIComponent(path.basename(spritesheet))}`
+      };
+      if (layout) skin.layout = layout;
+      skins.push(skin);
     } catch (_) {}
   }
   return skins;
+}
+
+async function allPetSkins(options = {}) {
+  return [...await petSkins(), ...await hermesPetSkins(options)];
+}
+
+function normalizePetGalleryLimit(value) {
+  const limit = Number(value || PET_GALLERY_DEFAULT_LIMIT);
+  if (!Number.isInteger(limit) || limit < 1) return PET_GALLERY_DEFAULT_LIMIT;
+  return Math.min(limit, PET_GALLERY_MAX_LIMIT);
+}
+
+function normalizePetGalleryOffset(value) {
+  const offset = Number(value || 0);
+  return Number.isInteger(offset) && offset > 0 ? offset : 0;
+}
+
+function normalizeGalleryPet(raw) {
+  const source = raw && typeof raw === 'object' ? raw : {};
+  const slug = safePetSlug(source.slug);
+  if (!slug) return null;
+  const displayName = String(source.displayName || source.name || slug).replace(/\s+/g, ' ').trim() || slug;
+  const kind = String(source.kind || '').replace(/\s+/g, ' ').trim();
+  const submittedBy = String(source.submittedBy || '').replace(/\s+/g, ' ').trim();
+  const spritesheetUrl = String(source.spritesheetUrl || '').trim();
+  return {
+    slug,
+    displayName,
+    kind,
+    submittedBy,
+    spritesheetUrl: /^https?:\/\//.test(spritesheetUrl) ? spritesheetUrl : '',
+    previewUrl: `/api/pet/gallery/preview/${encodeURIComponent(slug)}`,
+    source: 'petdex'
+  };
+}
+
+async function fetchPetGalleryManifest(options = {}) {
+  if (Array.isArray(options.petGalleryPets)) {
+    return {
+      generatedAt: null,
+      total: options.petGalleryPets.length,
+      pets: options.petGalleryPets
+    };
+  }
+
+  const manifestUrl = String(options.petGalleryManifestUrl || process.env.HERMES_PETDEX_MANIFEST_URL || PET_GALLERY_MANIFEST_URL);
+  const now = Date.now();
+  if (petGalleryCache && petGalleryCache.url === manifestUrl && petGalleryCache.expiresAt > now) {
+    return petGalleryCache.manifest;
+  }
+
+  const fetchImpl = options.fetch || globalThis.fetch;
+  if (typeof fetchImpl !== 'function') {
+    throw Object.assign(new Error('Pet gallery fetch is not available'), { statusCode: 502, code: 'pet_gallery_fetch_unavailable' });
+  }
+  const response = await fetchImpl(manifestUrl, {
+    headers: { accept: 'application/json' }
+  });
+  if (!response || !response.ok) {
+    throw Object.assign(new Error(`Pet gallery manifest failed: ${response && response.status || 'unknown'}`), { statusCode: 502, code: 'pet_gallery_manifest_failed' });
+  }
+  const manifest = await response.json();
+  petGalleryCache = {
+    url: manifestUrl,
+    expiresAt: now + PET_GALLERY_CACHE_MS,
+    manifest
+  };
+  return manifest;
+}
+
+async function petGalleryResponse(url, options = {}) {
+  const manifest = await fetchPetGalleryManifest(options);
+  const installedSkins = await hermesPetSkins(options);
+  const installedBySlug = new Map(installedSkins.map((skin) => [skin.hermesPetSlug, skin]));
+  const installedSlugs = await installedHermesPetSlugs(options);
+  const query = String(url.searchParams.get('q') || '').replace(/\s+/g, ' ').trim().toLowerCase();
+  const offset = normalizePetGalleryOffset(url.searchParams.get('offset'));
+  const limit = normalizePetGalleryLimit(url.searchParams.get('limit'));
+  const allPets = (Array.isArray(manifest && manifest.pets) ? manifest.pets : [])
+    .map(normalizeGalleryPet)
+    .filter(Boolean);
+  const filtered = query
+    ? allPets.filter((pet) => [pet.slug, pet.displayName, pet.kind, pet.submittedBy].some((value) => String(value || '').toLowerCase().includes(query)))
+    : allPets;
+  const pets = filtered.slice(offset, offset + limit).map((pet) => ({
+    ...pet,
+    installed: installedSlugs.has(pet.slug),
+    skinId: installedSlugs.has(pet.slug) ? `hermes-${pet.slug}` : null,
+    installedSkin: installedBySlug.get(pet.slug) || null,
+    compatibility: installedSlugs.has(pet.slug)
+      ? (installedBySlug.has(pet.slug) ? 'supported' : 'unsupported')
+      : 'unchecked'
+  }));
+  return {
+    ok: true,
+    generatedAt: manifest && manifest.generatedAt || null,
+    total: filtered.length,
+    manifestTotal: Number(manifest && manifest.total || allPets.length),
+    offset,
+    limit,
+    query,
+    installedCount: installedSlugs.size,
+    pets
+  };
+}
+
+async function petGalleryPetBySlug(slug, options = {}) {
+  const safeSlug = safePetSlug(slug);
+  if (!safeSlug) return null;
+  const manifest = await fetchPetGalleryManifest(options);
+  return (Array.isArray(manifest && manifest.pets) ? manifest.pets : [])
+    .map(normalizeGalleryPet)
+    .find((pet) => pet && pet.slug === safeSlug) || null;
+}
+
+async function servePetGalleryPreview(res, requestPath, options = {}, headers = {}) {
+  const match = requestPath.match(/^\/api\/pet\/gallery\/preview\/([^/]+)$/);
+  if (!match) return false;
+  const slug = safePetSlug(decodeURIComponent(match[1]));
+  const pet = await petGalleryPetBySlug(slug, options);
+  if (!pet || !pet.spritesheetUrl) {
+    sendJson(res, 404, { ok: false, error: 'not_found' }, headers);
+    return true;
+  }
+  const fetchImpl = options.fetch || globalThis.fetch;
+  if (typeof fetchImpl !== 'function') {
+    sendJson(res, 502, { ok: false, error: 'pet_gallery_fetch_unavailable' }, headers);
+    return true;
+  }
+  try {
+    const response = await fetchImpl(pet.spritesheetUrl, {
+      headers: { accept: 'image/avif,image/webp,image/png,image/*,*/*;q=0.8' }
+    });
+    if (!response || !response.ok) {
+      sendJson(res, 502, { ok: false, error: 'pet_preview_fetch_failed' }, headers);
+      return true;
+    }
+    const buffer = Buffer.from(await response.arrayBuffer());
+    const type = response.headers && response.headers.get && response.headers.get('content-type');
+    sendBuffer(res, 200, buffer, type && /^image\//.test(type) ? type : contentTypeFor(new URL(pet.spritesheetUrl).pathname), {
+      'cache-control': 'public, max-age=3600',
+      ...headers
+    });
+  } catch (_) {
+    sendJson(res, 502, { ok: false, error: 'pet_preview_fetch_failed' }, headers);
+  }
+  return true;
+}
+
+function hermesCliCommand(options = {}) {
+  return String(options.hermesCli || process.env.HERMES_DESKTOP_COMPANION_HERMES_CLI || process.env.HERMES_CLI || 'hermes');
+}
+
+function hermesCliEnv(options = {}) {
+  const env = { ...process.env };
+  if (options.hermesPetsDir && path.basename(path.resolve(String(options.hermesPetsDir))) === 'pets') {
+    env.HERMES_HOME = path.dirname(path.resolve(String(options.hermesPetsDir)));
+  }
+  return env;
+}
+
+function trimCommandOutput(value) {
+  return String(value || '').replace(/\s+$/g, '').slice(-4000);
+}
+
+async function runHermesPetsCommand(options = {}, args = []) {
+  if (typeof options.runHermesPetsCommand === 'function') {
+    return options.runHermesPetsCommand(args);
+  }
+  const command = hermesCliCommand(options);
+  const timeoutMs = Number(options.hermesCliTimeoutMs || 120_000);
+  return new Promise((resolve, reject) => {
+    let settled = false;
+    let stdout = '';
+    let stderr = '';
+    const child = spawn(command, args, {
+      env: hermesCliEnv(options),
+      stdio: ['ignore', 'pipe', 'pipe']
+    });
+    const timer = setTimeout(() => {
+      if (settled) return;
+      settled = true;
+      child.kill('SIGTERM');
+      reject(Object.assign(new Error('Hermes pet command timed out'), {
+        statusCode: 504,
+        code: 'hermes_cli_timeout',
+        stdout: trimCommandOutput(stdout),
+        stderr: trimCommandOutput(stderr)
+      }));
+    }, timeoutMs);
+    child.stdout.on('data', (chunk) => { stdout += chunk.toString('utf8'); });
+    child.stderr.on('data', (chunk) => { stderr += chunk.toString('utf8'); });
+    child.on('error', (error) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      reject(Object.assign(error, {
+        statusCode: 502,
+        code: 'hermes_cli_unavailable',
+        stdout: trimCommandOutput(stdout),
+        stderr: trimCommandOutput(stderr)
+      }));
+    });
+    child.on('close', (exitCode) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      const result = {
+        exitCode,
+        stdout: trimCommandOutput(stdout),
+        stderr: trimCommandOutput(stderr)
+      };
+      if (exitCode === 0) {
+        resolve(result);
+        return;
+      }
+      reject(Object.assign(new Error(result.stderr || result.stdout || `Hermes pet command failed with exit ${exitCode}`), {
+        statusCode: 502,
+        code: 'hermes_cli_failed',
+        ...result
+      }));
+    });
+  });
+}
+
+async function installedPetState(slug, options = {}) {
+  const root = hermesPetsRoot(options);
+  const pet = await resolveHermesPet(root, slug);
+  const skin = await hermesPetSkin(root, slug);
+  return {
+    installed: Boolean(pet),
+    supported: Boolean(skin),
+    skin
+  };
+}
+
+async function installGalleryPet(body, options = {}) {
+  const slug = safePetSlug(body && body.slug);
+  if (!slug) {
+    throw Object.assign(new Error('invalid_pet_slug'), { statusCode: 400, code: 'invalid_pet_slug' });
+  }
+  const args = ['pets', 'install'];
+  if (body && body.force === true) args.push('--force');
+  if (body && body.select === true) args.push('--select');
+  args.push(slug);
+  const command = await runHermesPetsCommand(options, args);
+  const state = await installedPetState(slug, options);
+  return {
+    ok: state.installed,
+    slug,
+    installed: state.installed,
+    supported: state.supported,
+    skin: state.skin,
+    stdout: command && command.stdout || '',
+    stderr: command && command.stderr || ''
+  };
+}
+
+async function removeGalleryPet(body, options = {}) {
+  const slug = safePetSlug(body && body.slug);
+  if (!slug) {
+    throw Object.assign(new Error('invalid_pet_slug'), { statusCode: 400, code: 'invalid_pet_slug' });
+  }
+  const before = await installedPetState(slug, options);
+  if (!before.installed) {
+    return { ok: true, slug, removed: true, installed: false };
+  }
+  const command = await runHermesPetsCommand(options, ['pets', 'remove', slug]);
+  const after = await installedPetState(slug, options);
+  return {
+    ok: !after.installed,
+    slug,
+    removed: !after.installed,
+    installed: after.installed,
+    stdout: command && command.stdout || '',
+    stderr: command && command.stderr || ''
+  };
+}
+
+function sendPetGalleryCommandError(res, headers, fallbackCode, error) {
+  const status = Number(error && error.statusCode || 500);
+  sendJson(res, status >= 400 && status <= 599 ? status : 500, {
+    ok: false,
+    error: error && error.code || fallbackCode,
+    message: String(error && error.message || fallbackCode).slice(0, 1000),
+    stdout: trimCommandOutput(error && error.stdout),
+    stderr: trimCommandOutput(error && error.stderr)
+  }, headers);
+}
+
+async function serveHermesPetAsset(res, requestPath, options = {}, headers = {}) {
+  const match = requestPath.match(/^\/api\/pet\/hermes-pets\/([^/]+)\/([^/]+)$/);
+  if (!match) return false;
+  const root = hermesPetsRoot(options);
+  const slug = safePetSlug(decodeURIComponent(match[1]));
+  const fileName = path.basename(decodeURIComponent(match[2] || ''));
+  const pet = await resolveHermesPet(root, slug);
+  if (!pet || fileName !== path.basename(pet.spritesheet)) {
+    sendJson(res, 404, { ok: false, error: 'not_found' }, headers);
+    return true;
+  }
+  try {
+    const buffer = await readFile(pet.spritesheet);
+    sendBuffer(res, 200, buffer, contentTypeFor(pet.spritesheet), headers);
+  } catch (_) {
+    sendJson(res, 404, { ok: false, error: 'not_found' }, headers);
+  }
+  return true;
 }
 
 export function createServer(options = {}) {
@@ -453,6 +999,11 @@ export function createServer(options = {}) {
   let navigationLastPollAt = 0;
   let actionCommands = [];
   let nativeHostRegistration = null;
+  let petSkinSelection = {
+    skin_id: '',
+    updated_at_ms: 0,
+    updated_at: null
+  };
 
   function preferenceResponse() {
     return { ok: true, ...preferences, server_time: Date.now() / 1000 };
@@ -466,6 +1017,44 @@ export function createServer(options = {}) {
     preferences = normalizePreferences(next);
     savePreferences(preferencePath, preferences);
     return preferenceResponse();
+  }
+
+  function petSkinSelectionResponse(since = 0) {
+    const sinceMs = Number(since || 0);
+    const changed = Number(petSkinSelection.updated_at_ms || 0) > sinceMs;
+    return {
+      ok: true,
+      changed,
+      skin_id: changed ? petSkinSelection.skin_id : null,
+      updated_at_ms: petSkinSelection.updated_at_ms,
+      updated_at: petSkinSelection.updated_at,
+      server_time: Date.now() / 1000
+    };
+  }
+
+  async function updatePetSkinSelection(body) {
+    const skinId = safeSkinId(body && (body.skin_id || body.skinId));
+    if (!skinId) {
+      throw Object.assign(new Error('invalid_skin_id'), { statusCode: 400, code: 'invalid_skin_id' });
+    }
+    const skins = await allPetSkins(options);
+    if (!skins.some((skin) => skin.id === skinId)) {
+      throw Object.assign(new Error('skin_not_found'), { statusCode: 404, code: 'skin_not_found' });
+    }
+    const now = Date.now();
+    petSkinSelection = {
+      skin_id: skinId,
+      updated_at_ms: now,
+      updated_at: now / 1000
+    };
+    return {
+      ok: true,
+      changed: true,
+      skin_id: petSkinSelection.skin_id,
+      updated_at_ms: petSkinSelection.updated_at_ms,
+      updated_at: petSkinSelection.updated_at,
+      server_time: now / 1000
+    };
   }
 
   function runtimeStatus(now = Date.now()) {
@@ -665,8 +1254,10 @@ export function createServer(options = {}) {
           sendHead(res, 200, 'application/json; charset=utf-8', 0, headers);
           return;
         }
-        if (url.pathname === '/' || url.pathname === '/pet' || url.pathname === '/pet/' || url.pathname === '/pet/bubbles' || url.pathname === '/pet/bubbles/') {
-          const fileName = url.pathname.startsWith('/pet/bubbles') ? 'bubbles.html' : 'pet.html';
+        if (url.pathname === '/' || url.pathname === '/pet' || url.pathname === '/pet/' || url.pathname === '/pet/bubbles' || url.pathname === '/pet/bubbles/' || url.pathname === '/pet/gallery' || url.pathname === '/pet/gallery/') {
+          const fileName = url.pathname.startsWith('/pet/bubbles')
+            ? 'bubbles.html'
+            : (url.pathname.startsWith('/pet/gallery') ? 'pet-gallery.html' : 'pet.html');
           const info = await stat(path.join(DESKTOP_WEB_ROOT, fileName));
           sendHead(res, 200, 'text/html; charset=utf-8', info.size, headers);
           return;
@@ -742,7 +1333,44 @@ export function createServer(options = {}) {
       }
 
       if (req.method === 'GET' && url.pathname === '/api/pet/skins') {
-        sendJson(res, 200, { ok: true, skins: await petSkins() }, headers);
+        sendJson(res, 200, { ok: true, skins: await allPetSkins(options) }, headers);
+        return;
+      }
+
+      if (req.method === 'GET' && url.pathname.startsWith('/api/pet/hermes-pets/')) {
+        await serveHermesPetAsset(res, url.pathname, options, headers);
+        return;
+      }
+
+      if (req.method === 'GET' && url.pathname.startsWith('/api/pet/gallery/preview/')) {
+        await servePetGalleryPreview(res, url.pathname, options, headers);
+        return;
+      }
+
+      if (req.method === 'GET' && url.pathname === '/api/pet/gallery') {
+        try {
+          sendJson(res, 200, await petGalleryResponse(url, options), headers);
+        } catch (error) {
+          sendPetGalleryCommandError(res, headers, 'pet_gallery_failed', error);
+        }
+        return;
+      }
+
+      if (req.method === 'POST' && url.pathname === '/api/pet/gallery/install') {
+        try {
+          sendJson(res, 200, await installGalleryPet(await readJson(req), options), headers);
+        } catch (error) {
+          sendPetGalleryCommandError(res, headers, 'pet_install_failed', error);
+        }
+        return;
+      }
+
+      if (req.method === 'POST' && url.pathname === '/api/pet/gallery/remove') {
+        try {
+          sendJson(res, 200, await removeGalleryPet(await readJson(req), options), headers);
+        } catch (error) {
+          sendPetGalleryCommandError(res, headers, 'pet_remove_failed', error);
+        }
         return;
       }
 
@@ -809,6 +1437,20 @@ export function createServer(options = {}) {
         return;
       }
 
+      if (req.method === 'GET' && url.pathname === '/api/pet/skin_selection') {
+        sendJson(res, 200, petSkinSelectionResponse(url.searchParams.get('since')), headers);
+        return;
+      }
+
+      if (req.method === 'POST' && url.pathname === '/api/pet/skin_selection') {
+        try {
+          sendJson(res, 200, await updatePetSkinSelection(await readJson(req)), headers);
+        } catch (error) {
+          sendPetGalleryCommandError(res, headers, 'pet_skin_selection_failed', error);
+        }
+        return;
+      }
+
       if (req.method === 'POST' && url.pathname === '/api/pet/open_session') {
         const body = await readJson(req);
         const command = queuePetSessionNavigation(body);
@@ -859,6 +1501,12 @@ export function createServer(options = {}) {
 
       if (req.method === 'GET' && (url.pathname === '/pet/bubbles' || url.pathname === '/pet/bubbles/')) {
         const html = await readFile(path.join(DESKTOP_WEB_ROOT, 'bubbles.html'), 'utf8');
+        sendText(res, 200, html, 'text/html; charset=utf-8', headers);
+        return;
+      }
+
+      if (req.method === 'GET' && (url.pathname === '/pet/gallery' || url.pathname === '/pet/gallery/')) {
+        const html = await readFile(path.join(DESKTOP_WEB_ROOT, 'pet-gallery.html'), 'utf8');
         sendText(res, 200, html, 'text/html; charset=utf-8', headers);
         return;
       }
