@@ -9,6 +9,7 @@ import { fileURLToPath } from 'node:url';
 export const SERVICE_NAME = 'hermes-webui-desktop-companion';
 export const DISPLAY_NAME = 'Hermes WebUI Desktop Companion';
 export const VERSION = '0.1.0';
+export const PET_PACK_CONTRACT_VERSION = 1;
 const PROJECT_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const DESKTOP_WEB_ROOT = path.join(PROJECT_ROOT, 'desktop-pet', 'web');
 const EXTENSION_ROOT = path.join(PROJECT_ROOT, 'extension');
@@ -458,6 +459,45 @@ export function createServer(options = {}) {
     return { ok: true, ...preferences, server_time: Date.now() / 1000 };
   }
 
+  function petCapabilities() {
+    return {
+      ok: true,
+      pet_pack_contract_version: PET_PACK_CONTRACT_VERSION,
+      service: SERVICE_NAME,
+      version: VERSION,
+      pet_model: {
+        user_facing_selection: 'pet_skin',
+        pack_types: ['classic_skin', 'custom_display_pack'],
+        default_pack_type: 'classic_skin',
+        custom_display_packs: false
+      },
+      endpoints: {
+        health: '/health',
+        snapshot: '/api/webui/snapshot',
+        attention: '/api/pet/attention',
+        skins: '/api/pet/skins',
+        capabilities: '/api/pet/capabilities',
+        open_session: '/api/pet/open_session',
+        preferences: '/api/pet/preference'
+      },
+      attention: {
+        statuses: ['running', 'ready', 'action_required'],
+        sources: ['webui-extension-snapshot', 'empty', 'stale', 'unloaded'],
+        stale_after_ms: PET_SNAPSHOT_ATTENTION_TTL_MS
+      },
+      capabilities: {
+        read_attention: true,
+        read_snapshot: true,
+        read_skins: true,
+        open_session: true,
+        draft_reply: true,
+        direct_send: Boolean(preferences.allow_direct_send),
+        inline_action_responses: Boolean(preferences.allow_inline_action_responses)
+      },
+      server_time: Date.now() / 1000
+    };
+  }
+
   function updatePreferences(body) {
     const next = { ...preferences };
     for (const key of ['enabled', 'allow_direct_send', 'allow_inline_action_responses']) {
@@ -743,6 +783,11 @@ export function createServer(options = {}) {
 
       if (req.method === 'GET' && url.pathname === '/api/pet/skins') {
         sendJson(res, 200, { ok: true, skins: await petSkins() }, headers);
+        return;
+      }
+
+      if (req.method === 'GET' && url.pathname === '/api/pet/capabilities') {
+        sendJson(res, 200, petCapabilities(), headers);
         return;
       }
 

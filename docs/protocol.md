@@ -215,6 +215,56 @@ current WebUI frontend state:
 - approval and clarification rows use attention metadata exposed by WebUI
   session rows.
 
+## `GET /api/pet/capabilities`
+
+Returns the current Desktop Companion Pet Pack contract version, the stable
+pet-facing endpoints, attention status/source values, user-facing pet selection
+model, and optional action capabilities.
+
+```json
+{
+  "ok": true,
+  "pet_pack_contract_version": 1,
+  "service": "hermes-webui-desktop-companion",
+  "version": "0.1.0",
+  "pet_model": {
+    "user_facing_selection": "pet_skin",
+    "pack_types": ["classic_skin", "custom_display_pack"],
+    "default_pack_type": "classic_skin",
+    "custom_display_packs": false
+  },
+  "endpoints": {
+    "health": "/health",
+    "snapshot": "/api/webui/snapshot",
+    "attention": "/api/pet/attention",
+    "skins": "/api/pet/skins",
+    "capabilities": "/api/pet/capabilities",
+    "open_session": "/api/pet/open_session",
+    "preferences": "/api/pet/preference"
+  },
+  "attention": {
+    "statuses": ["running", "ready", "action_required"],
+    "sources": ["webui-extension-snapshot", "empty", "stale", "unloaded"],
+    "stale_after_ms": 30000
+  },
+  "capabilities": {
+    "read_attention": true,
+    "read_snapshot": true,
+    "read_skins": true,
+    "open_session": true,
+    "draft_reply": true,
+    "direct_send": false,
+    "inline_action_responses": false
+  }
+}
+```
+
+See `docs/pet-pack-contract.md` for the Pet Pack contract. Pet displays should
+prefer `/api/pet/attention` over raw snapshot parsing unless they need
+diagnostic or experimental data. `custom_display_packs: false` means the
+contract reserves the model, but this sidecar build does not yet load external
+custom display packs.
+
 ## `POST /api/pet/open_session`
 
 Queues an `open_session` command for the WebUI adapter and asks the operating
