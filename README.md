@@ -213,9 +213,17 @@ default. Do not expose it on a public interface.
 
 The sidecar serves local pet assets and stores only the latest in-memory WebUI
 snapshot received from the adapter. It persists only local pet preferences under
-the current user's home directory. It does not persist session data, read Hermes
-credentials, or require filesystem access outside this repository in the current
-scaffold.
+the current user's home directory. It does not persist session data or read
+Hermes credentials.
+
+The sidecar also detects installed Hermes pet skins from
+`<HERMES_HOME>/pets`, defaulting to `~/.hermes/pets`, and exposes those
+spritesheets through its loopback `/api/pet/skins` response. The native pet
+right-click menu keeps quick switching for installed skins and opens a local Pet
+Gallery / Manager for searching PetDeX, installing Hermes pets, removing
+installed Hermes pets, and applying a supported installed skin to Desktop
+Companion. Install and remove operations are delegated to the local
+`hermes pets` CLI instead of reimplementing a separate pet store.
 
 Direct quick-reply sending and inline approval/clarify responses are default-off
 local permissions. The first attempt from the desktop pet shows a confirmation

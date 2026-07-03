@@ -8,6 +8,7 @@ use tauri::menu::{MenuBuilder, SubmenuBuilder};
 use tauri::{Emitter, Listener, Manager, Url, WebviewWindow};
 
 const CLOSE_PET_MENU_ID: &str = "close_pet";
+const MANAGE_PETS_MENU_ID: &str = "manage_pets";
 const RESTART_PET_MENU_ID: &str = "restart_pet";
 const PET_NATIVE_RESTART_REQUESTED_EVENT: &str = "pet-native-restart-requested";
 const PET_CONTEXT_MENU_EVENT: &str = "pet-context-menu";
@@ -247,6 +248,7 @@ struct PetContextMenuPayload {
 #[serde(rename_all = "camelCase")]
 struct PetContextMenuLabels {
     switch_skin: Option<String>,
+    manage_pets: Option<String>,
     permissions_control: Option<String>,
     allow_direct_send: Option<String>,
     allow_inline_action_responses: Option<String>,
@@ -304,6 +306,26 @@ fn navigate_window_to_webui(app: &tauri::App, label: &str, path: &str) {
     url.query_pairs_mut()
         .append_pair("desktop_pet_pid", &process::id().to_string());
     let _ = window.navigate(url);
+}
+
+fn open_external_url(url: &str) {
+    #[cfg(target_os = "macos")]
+    {
+        let _ = Command::new("open").arg(url).spawn();
+    }
+    #[cfg(target_os = "windows")]
+    {
+        let _ = Command::new("cmd").args(["/c", "start", "", url]).spawn();
+    }
+    #[cfg(all(not(target_os = "macos"), not(target_os = "windows")))]
+    {
+        let _ = Command::new("xdg-open").arg(url).spawn();
+    }
+}
+
+fn open_pet_gallery_manager(_app: &tauri::AppHandle) {
+    let base = desktop_pet_webui_base();
+    open_external_url(&format!("{}/pet/gallery", base));
 }
 
 fn apply_bubble_visibility(
@@ -500,6 +522,10 @@ fn main() {
                         labels.and_then(|item| item.switch_skin.as_ref()),
                         "Switch skin",
                     );
+                    let manage_pets_label = menu_label(
+                        labels.and_then(|item| item.manage_pets.as_ref()),
+                        "Manage pets...",
+                    );
                     let permissions_control_label = menu_label(
                         labels.and_then(|item| item.permissions_control.as_ref()),
                         "Permission control",
@@ -585,6 +611,8 @@ fn main() {
                     };
                     let Ok(menu) = MenuBuilder::new(&menu_handle)
                         .item(&skin_menu)
+                        .text(MANAGE_PETS_MENU_ID, manage_pets_label)
+                        .separator()
                         .item(&permission_menu)
                         .separator()
                         .text(RESTART_PET_MENU_ID, restart_pet_label)
@@ -640,6 +668,10 @@ fn main() {
                         thread::sleep(Duration::from_millis(220));
                         exit_handle.exit(0);
                     });
+                }
+                MANAGE_PETS_MENU_ID => {
+                    restore_pet_window_layers(&app.clone());
+                    open_pet_gallery_manager(&app.clone());
                 }
                 RESTART_PET_MENU_ID => {
                     restore_pet_window_layers(&app.clone());

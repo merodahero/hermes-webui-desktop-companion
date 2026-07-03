@@ -28,6 +28,7 @@
   let state='idle', frame=0, sessions=[], dismissed=_readJson(DISMISSED_KEY,{});
   let petSkins=[{id:'keeper',displayName:'May',spritesheetUrl:'/extensions/pets/keeper/spritesheet.webp',layout:DEFAULT_PET_LAYOUT}];
   let activeSkinId=localStorage.getItem(SKIN_KEY)||'keeper';
+  let lastSkinSelectionAt=0;
   let petPreferences={enabled:true,allow_direct_send:false,allow_inline_action_responses:false};
   let _isDragging=false;
   let _dragPrevX=null;
@@ -39,6 +40,7 @@
     desktop_pet_permission_allow_inline_actions:'Approval / clarify responses',
     desktop_pet_permissions_control:'Permission control',
     desktop_pet_expand_updates:'Expand updates',
+    desktop_pet_manage_pets:'Manage pets...',
     desktop_pet_restart:'Restart pet',
     desktop_pet_shell_label:'{0} desktop pet',
     desktop_pet_switch_skin:'Switch skin',
@@ -75,7 +77,7 @@
     petPreferences=_normalizePreferences(data);
     return petPreferences;
   }
-  function _menuLabels(){return {switchSkin:_petT('desktop_pet_switch_skin'),restartPet:_petT('desktop_pet_restart'),closePet:_petT('desktop_pet_close'),permissionsControl:_petT('desktop_pet_permissions_control'),allowDirectSend:_petT('desktop_pet_permission_allow_direct_send'),allowInlineActionResponses:_petT('desktop_pet_permission_allow_inline_actions')};}
+  function _menuLabels(){return {switchSkin:_petT('desktop_pet_switch_skin'),managePets:_petT('desktop_pet_manage_pets'),restartPet:_petT('desktop_pet_restart'),closePet:_petT('desktop_pet_close'),permissionsControl:_petT('desktop_pet_permissions_control'),allowDirectSend:_petT('desktop_pet_permission_allow_direct_send'),allowInlineActionResponses:_petT('desktop_pet_permission_allow_inline_actions')};}
   function _localizeStaticLabels(){
     if(typeof applyLocaleToDOM==='function') applyLocaleToDOM();
     document.title=_petT('desktop_pet_title');
@@ -148,6 +150,18 @@
     const tauri=window.__TAURI__;
     if(!tauri||!tauri.event||typeof tauri.event.listen!=='function') return;
     try{await tauri.event.listen('pet-skin-change',event=>_applyPetSkin(String(event.payload||''),true));}catch(err){console.warn('Failed to listen for pet skin changes',err);}
+  }
+  async function _pollPetSkinSelection(){
+    try{
+      const data=await fetch(`/api/pet/skin_selection?since=${encodeURIComponent(String(lastSkinSelectionAt||0))}`,{cache:'no-store'}).then(res=>{if(!res.ok) throw new Error(`Pet skin selection failed: ${res.status}`);return res.json();});
+      if(Number(data.updated_at_ms||0)>lastSkinSelectionAt) lastSkinSelectionAt=Number(data.updated_at_ms||0);
+      const skinId=String(data.skin_id||'').trim();
+      if(data.changed&&skinId) {
+        await _loadPetSkins();
+        _applyPetSkin(skinId,true);
+      }
+      return true;
+    }catch(err){console.warn('Failed to poll pet skin selection',err);return false;}
   }
   async function _restartPetInPlace(){
     try{await _savePetRestartPosition();}catch(err){console.warn('Failed to save pet restart position',err);}
@@ -467,6 +481,10 @@
   }
   badge.addEventListener('click',_onBadgeActivate);
   badge.addEventListener('keydown',event=>_handleAccessibleKey(event,_onBadgeActivate));
+  window.addEventListener('storage',event=>{
+    if(event.key!==SKIN_KEY||!event.newValue) return;
+    _applyPetSkin(event.newValue,false);
+  });
   function _emitPetLayoutBurst(){[0,80,180,360,720].forEach(delay=>setTimeout(()=>_emitPetLayout().catch(()=>{}),delay));}
   async function _listenPetWindowGeometry(){
     const win=_currentTauriWindow();
@@ -498,6 +516,7 @@
   window.addEventListener('storage',event=>{if(event.key===COLLAPSED_KEY||event.key===DISMISSED_KEY) render();});
   setInterval(_tick,FRAME_MS);
   setInterval(refresh,POLL_MS);
+  setInterval(_pollPetSkinSelection,1200);
   setInterval(_emitPetLayout,1000);
   async function _bootPet(){
     _localizeStaticLabels();
@@ -506,6 +525,7 @@
     await _loadPetSkins();
     await refresh();
     _listenPetSkinChanges();
+    _pollPetSkinSelection();
     _listenPetRestartRequests();
     _listenPetWindowGeometry();
     _listenPetPermissionMenu();

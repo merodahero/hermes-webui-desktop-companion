@@ -47,8 +47,8 @@ Window intent:
 - skipped from the taskbar / dock where supported
 - pet-sized transparent viewport whose runtime size follows the active skin layout
 - separate bubble window with dynamic height and top/bottom placement around the pet window
-- right-click menu for switching detected skins, toggling `Permission control`,
-  restarting the pet, or closing it
+- right-click menu for switching detected skins, opening Pet Gallery / Manager,
+  toggling `Permission control`, restarting the pet, or closing it
 
 The bubble window is not only for session cards. It can render work attention
 bubbles, the first-launch Welcome Card, and short ready/status toasts. Session
@@ -63,9 +63,14 @@ First-time shell preparation is owned by this companion project, not by Hermes
 WebUI core. WebUI only loads the adapter; it does not install or launch the
 native host in the current milestone.
 
-The default bundled skin is `keeper` / `May`. Additional skins can be added under
-`extension/pets/<id>/pet.json` plus a local spritesheet; the sidecar exposes the
-detected list through `/api/pet/skins`.
+The default bundled skin is `keeper` / `May`. Additional bundled skins can be
+added under `extension/pets/<id>/pet.json` plus a local spritesheet. The sidecar
+also detects installed Hermes pets from `<HERMES_HOME>/pets` (defaulting to
+`~/.hermes/pets`) and exposes the combined detected list through
+`/api/pet/skins`.
+Pet Gallery / Manager searches the PetDeX manifest and delegates install/remove
+operations to the local `hermes pets` CLI so Desktop Companion stays aligned
+with the Hermes pet store rather than maintaining a separate skin registry.
 
 Skin manifests use:
 
@@ -82,8 +87,18 @@ The shell is backed by loopback sidecar endpoints:
 
 - `/pet` serves the standalone pet page.
 - `/pet/bubbles` serves the separate bubble-window page.
+- `/pet/gallery` serves the Pet Gallery / Manager page opened from the native
+  pet right-click menu.
 - `/api/pet/attention` returns the final display list for sessions that need attention.
-- `/api/pet/skins` lists bundled and locally added skins.
+- `/api/pet/skins` lists bundled skins plus installed Hermes pet skins.
+- `/api/pet/gallery` searches the PetDeX manifest and annotates results with
+  local install and compatibility state.
+- `/api/pet/gallery/install` installs a PetDeX pet by delegating to the local
+  `hermes pets install` command.
+- `/api/pet/gallery/remove` removes an installed Hermes pet by delegating to the
+  local `hermes pets remove` command.
+- `/api/pet/hermes-pets/<slug>/<spritesheet>` serves a detected Hermes pet
+  spritesheet through the local loopback sidecar.
 - `/api/pet/navigation` lets the WebUI adapter consume pet commands.
 - `/api/pet/navigation_ack` acknowledges that the WebUI adapter consumed a pet command.
 - `/api/pet/actions` lets the WebUI adapter consume approval and clarify actions.

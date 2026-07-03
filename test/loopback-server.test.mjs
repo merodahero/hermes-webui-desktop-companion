@@ -1,4 +1,7 @@
 import assert from 'node:assert/strict';
+import { copyFile, mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
+import os from 'node:os';
+import path from 'node:path';
 import { after, before, test } from 'node:test';
 import { createServer, normalizePort } from '../src/loopback-server.mjs';
 
@@ -16,6 +19,18 @@ async function waitForCommand(base, path, predicate = () => true, timeoutMs = 12
     await new Promise((resolve) => setTimeout(resolve, 25));
   }
   assert.fail(`timed out waiting for command at ${path}: ${JSON.stringify(latest)}`);
+}
+
+function fakePngHeader(width, height) {
+  const buffer = Buffer.alloc(33);
+  Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]).copy(buffer, 0);
+  buffer.writeUInt32BE(13, 8);
+  buffer.write('IHDR', 12, 'ascii');
+  buffer.writeUInt32BE(width, 16);
+  buffer.writeUInt32BE(height, 20);
+  buffer[24] = 8;
+  buffer[25] = 6;
+  return buffer;
 }
 
 before(async () => {
@@ -580,6 +595,10 @@ test('desktop pet pages and assets are served by loopback', async () => {
   assert.equal(bubbles.status, 200);
   assert.match(await bubbles.text(), /petBubbles/);
 
+  const gallery = await fetch(`${baseUrl}/pet/gallery`);
+  assert.equal(gallery.status, 200);
+  assert.match(await gallery.text(), /Pet Gallery/);
+
   const script = await fetch(`${baseUrl}/desktop-pet/pet.js`);
   assert.equal(script.status, 200);
   assert.match(script.headers.get('content-type') || '', /javascript/);
@@ -587,6 +606,252 @@ test('desktop pet pages and assets are served by loopback', async () => {
   const sprite = await fetch(`${baseUrl}/extensions/pets/keeper/spritesheet.webp`);
   assert.equal(sprite.status, 200);
   assert.equal(sprite.headers.get('content-type'), 'image/webp');
+});
+
+test('pet skins include installed Hermes pets and serve their spritesheets', async () => {
+  const tmpRoot = await mkdtemp(path.join(os.tmpdir(), 'hermes-pets-'));
+  const petsRoot = path.join(tmpRoot, 'pets');
+  await mkdir(path.join(petsRoot, 'panam'), { recursive: true });
+  await mkdir(path.join(petsRoot, 'legacy'), { recursive: true });
+  await mkdir(path.join(petsRoot, 'unsupported'), { recursive: true });
+
+  try {
+    await writeFile(path.join(petsRoot, 'panam', 'pet.json'), JSON.stringify({
+      id: 'panam',
+      displayName: 'Panam',
+      description: 'Hermes-installed PetDeX skin.',
+      spritesheetPath: 'spritesheet.webp'
+    }));
+    await copyFile(
+      new URL('../extension/pets/keeper/spritesheet.webp', import.meta.url),
+      path.join(petsRoot, 'panam', 'spritesheet.webp')
+    );
+
+    await writeFile(path.join(petsRoot, 'legacy', 'pet.json'), JSON.stringify({
+      id: 'legacy',
+      displayName: 'Legacy Pet',
+      description: 'Legacy 9x8 pet sheet.',
+      spritesheetPath: 'spritesheet.png'
+    }));
+    await writeFile(path.join(petsRoot, 'legacy', 'spritesheet.png'), fakePngHeader(1728, 1664));
+
+    await writeFile(path.join(petsRoot, 'unsupported', 'pet.json'), JSON.stringify({
+      id: 'unsupported',
+      displayName: 'Unsupported Pet',
+      description: 'Non-atlas dimensions should not be offered.',
+      spritesheetPath: 'spritesheet.png'
+    }));
+    await writeFile(path.join(petsRoot, 'unsupported', 'spritesheet.png'), fakePngHeader(1024, 1024));
+
+    const localServer = createServer({ preferencePath: null, hermesPetsDir: petsRoot });
+    await new Promise((resolve) => localServer.listen(0, '127.0.0.1', resolve));
+    const address = localServer.address();
+    const url = `http://${address.address}:${address.port}`;
+    try {
+      const response = await fetch(`${url}/api/pet/skins`);
+      const body = await response.json();
+      assert.equal(response.status, 200);
+
+      const byId = new Map(body.skins.map((skin) => [skin.id, skin]));
+      assert.ok(byId.has('keeper'));
+      assert.ok(byId.has('hermes-panam'));
+      assert.ok(byId.has('hermes-legacy'));
+      assert.equal(byId.has('hermes-unsupported'), false);
+
+      const keeper = byId.get('keeper');
+      assert.equal(keeper.displayName, 'May');
+      assert.equal(keeper.spritesheetUrl, '/extensions/pets/keeper/spritesheet.webp');
+      assert.equal(keeper.layout.columns, 8);
+      assert.equal(keeper.layout.rows, 9);
+      assert.equal(keeper.layout.states.find((item) => item.name === 'idle').frames, 6);
+      assert.equal(keeper.layout.states.find((item) => item.name === 'running-right').frames, 8);
+      assert.equal(keeper.layout.states.find((item) => item.name === 'review').row, 8);
+
+      const panam = byId.get('hermes-panam');
+      assert.equal(panam.displayName, 'Panam');
+      assert.equal(panam.source, 'hermes-pets');
+      assert.equal(panam.hermesPetSlug, 'panam');
+      assert.equal(panam.spritesheetUrl, '/api/pet/hermes-pets/panam/spritesheet.webp');
+      assert.equal(panam.layout.columns, 8);
+      assert.equal(panam.layout.rows, 9);
+      assert.equal(panam.layout.states.find((item) => item.name === 'running-right').frames, 8);
+      assert.equal(panam.layout.states.find((item) => item.name === 'running-left').frames, 8);
+      assert.equal(panam.layout.states.find((item) => item.name === 'waving').frames, 4);
+      assert.equal(panam.layout.states.find((item) => item.name === 'jumping').frames, 5);
+      assert.equal(panam.layout.states.find((item) => item.name === 'failed').frames, 8);
+      assert.equal(panam.layout.states.find((item) => item.name === 'running').row, 7);
+
+      const legacy = byId.get('hermes-legacy');
+      assert.equal(legacy.spritesheetUrl, '/api/pet/hermes-pets/legacy/spritesheet.png');
+      assert.equal(legacy.layout.columns, 9);
+      assert.equal(legacy.layout.rows, 8);
+      assert.equal(legacy.layout.states.find((item) => item.name === 'running-right').row, 2);
+      assert.equal(legacy.layout.states.find((item) => item.name === 'running-left').row, 2);
+      assert.equal(legacy.layout.states.find((item) => item.name === 'review').row, 4);
+      assert.equal(legacy.layout.states.find((item) => item.name === 'waiting').row, 0);
+
+      const sprite = await fetch(`${url}${panam.spritesheetUrl}`);
+      assert.equal(sprite.status, 200);
+      assert.equal(sprite.headers.get('content-type'), 'image/webp');
+      assert.ok((await sprite.arrayBuffer()).byteLength > 1024);
+    } finally {
+      await new Promise((resolve, reject) => {
+        localServer.close((error) => (error ? reject(error) : resolve()));
+      });
+    }
+  } finally {
+    await rm(tmpRoot, { recursive: true, force: true });
+  }
+});
+
+test('pet gallery searches PetDeX manifest and installs through Hermes CLI', async () => {
+  const tmpRoot = await mkdtemp(path.join(os.tmpdir(), 'hermes-pet-gallery-'));
+  const petsRoot = path.join(tmpRoot, 'pets');
+  const commands = [];
+
+  async function installFixture(slug) {
+    await mkdir(path.join(petsRoot, slug), { recursive: true });
+    await writeFile(path.join(petsRoot, slug, 'pet.json'), JSON.stringify({
+      id: slug,
+      displayName: 'Panam',
+      description: 'Installed from the gallery.',
+      spritesheetPath: 'spritesheet.webp'
+    }));
+    await copyFile(
+      new URL('../extension/pets/keeper/spritesheet.webp', import.meta.url),
+      path.join(petsRoot, slug, 'spritesheet.webp')
+    );
+  }
+
+  try {
+    const localServer = createServer({
+      preferencePath: null,
+      hermesPetsDir: petsRoot,
+      petGalleryPets: [
+        {
+          slug: 'panam',
+          displayName: 'Panam',
+          kind: 'character',
+          submittedBy: 'tester',
+          spritesheetUrl: 'https://assets.petdex.dev/pets/panam/sprite.webp'
+        },
+        {
+          slug: 'other-pet',
+          displayName: 'Other Pet',
+          kind: 'object',
+          submittedBy: 'tester'
+        }
+      ],
+      runHermesPetsCommand: async (args) => {
+        commands.push(args);
+        if (args[0] === 'pets' && args[1] === 'install') {
+          await installFixture(args[args.length - 1]);
+          return { stdout: 'installed', stderr: '' };
+        }
+        if (args[0] === 'pets' && args[1] === 'remove') {
+          await rm(path.join(petsRoot, args[2]), { recursive: true, force: true });
+          return { stdout: 'removed', stderr: '' };
+        }
+        throw new Error(`unexpected command: ${args.join(' ')}`);
+      }
+    });
+    await new Promise((resolve) => localServer.listen(0, '127.0.0.1', resolve));
+    const address = localServer.address();
+    const url = `http://${address.address}:${address.port}`;
+    try {
+      const gallery = await fetch(`${url}/api/pet/gallery?q=panam`);
+      const galleryBody = await gallery.json();
+      assert.equal(gallery.status, 200);
+      assert.equal(galleryBody.total, 1);
+      assert.equal(galleryBody.pets[0].slug, 'panam');
+      assert.equal(galleryBody.pets[0].installed, false);
+
+      const install = await fetch(`${url}/api/pet/gallery/install`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ slug: 'panam' })
+      });
+      const installBody = await install.json();
+      assert.equal(install.status, 200);
+      assert.equal(installBody.ok, true);
+      assert.equal(installBody.installed, true);
+      assert.equal(installBody.supported, true);
+      assert.equal(installBody.skin.id, 'hermes-panam');
+      assert.deepEqual(commands[0], ['pets', 'install', 'panam']);
+
+      const installedGallery = await fetch(`${url}/api/pet/gallery?q=panam`);
+      const installedBody = await installedGallery.json();
+      assert.equal(installedBody.pets[0].installed, true);
+      assert.equal(installedBody.pets[0].compatibility, 'supported');
+      assert.equal(installedBody.pets[0].skinId, 'hermes-panam');
+
+      const remove = await fetch(`${url}/api/pet/gallery/remove`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ slug: 'panam' })
+      });
+      const removeBody = await remove.json();
+      assert.equal(remove.status, 200);
+      assert.equal(removeBody.ok, true);
+      assert.equal(removeBody.removed, true);
+      assert.deepEqual(commands[1], ['pets', 'remove', 'panam']);
+    } finally {
+      await new Promise((resolve, reject) => {
+        localServer.close((error) => (error ? reject(error) : resolve()));
+      });
+    }
+  } finally {
+    await rm(tmpRoot, { recursive: true, force: true });
+  }
+});
+
+test('pet skin selection can be set from the manager page', async () => {
+  const localServer = createServer({ preferencePath: null });
+  await new Promise((resolve) => localServer.listen(0, '127.0.0.1', resolve));
+  const address = localServer.address();
+  const url = `http://${address.address}:${address.port}`;
+  try {
+    const initial = await fetch(`${url}/api/pet/skin_selection`);
+    const initialBody = await initial.json();
+    assert.equal(initial.status, 200);
+    assert.equal(initialBody.ok, true);
+    assert.equal(initialBody.changed, false);
+    assert.equal(initialBody.skin_id, null);
+
+    const selected = await fetch(`${url}/api/pet/skin_selection`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ skin_id: 'keeper' })
+    });
+    const selectedBody = await selected.json();
+    assert.equal(selected.status, 200);
+    assert.equal(selectedBody.ok, true);
+    assert.equal(selectedBody.changed, true);
+    assert.equal(selectedBody.skin_id, 'keeper');
+
+    const unchanged = await fetch(`${url}/api/pet/skin_selection?since=${selectedBody.updated_at_ms}`);
+    const unchangedBody = await unchanged.json();
+    assert.equal(unchanged.status, 200);
+    assert.equal(unchangedBody.changed, false);
+    assert.equal(unchangedBody.skin_id, null);
+
+    const changed = await fetch(`${url}/api/pet/skin_selection?since=0`);
+    const changedBody = await changed.json();
+    assert.equal(changed.status, 200);
+    assert.equal(changedBody.changed, true);
+    assert.equal(changedBody.skin_id, 'keeper');
+
+    const missing = await fetch(`${url}/api/pet/skin_selection`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ skin_id: 'missing-skin' })
+    });
+    assert.equal(missing.status, 404);
+  } finally {
+    await new Promise((resolve, reject) => {
+      localServer.close((error) => (error ? reject(error) : resolve()));
+    });
+  }
 });
 
 test('desktop pet devUrl supports HEAD probes', async () => {
