@@ -1,19 +1,95 @@
 # Hermes WebUI Desktop Companion
 
-Hermes WebUI Desktop Companion is an external companion project for Hermes WebUI.
-It keeps desktop companion behavior outside the WebUI core repo and connects
-through the existing trusted local extension surface.
+Hermes WebUI Desktop Companion is a trusted-local companion for Hermes WebUI: a
+native desktop pet that watches real WebUI session state, surfaces work that
+needs attention, and opens the right WebUI tab when you click it.
 
-It is intended to be an extension-library candidate: the WebUI integration is a
-manifest-bundled extension, while desktop-only behavior stays in a trusted local
-sidecar and native host.
+The WebUI integration is a manifest-bundled extension. Desktop-only behavior
+stays outside the Hermes WebUI core repo in a local loopback sidecar and native
+Tauri host.
 
-The first milestone is intentionally small:
+<p align="center">
+  <img src="docs/assets/readme/desktop-pet.gif" alt="Hermes Desktop Pet" width="115">
+</p>
+
+## Feature highlights
+
+| Feature | What it does |
+| --- | --- |
+| Native Desktop Pet | Runs as a transparent always-on-top desktop window instead of an in-page browser widget. |
+| WebUI attention bridge | Watches running, ready, approval, and clarify states from Hermes WebUI and shows desktop bubbles when work needs attention. |
+| Click to WebUI | Clicking the pet focuses or opens the matching Hermes WebUI tab without refreshing an already-open target session. |
+| Pet Gallery / Manager | Searches Petdex, installs Hermes pets through the local `hermes pets` CLI, switches skins, and removes installed pets. |
+| Permission control | Direct quick replies and inline approval/clarify responses are default-off and require explicit local opt-in. |
+
+## Feature tour
+
+### Desktop Pet
+
+The visible companion is the native desktop pet. It reacts to WebUI state and
+keeps the browser integration out of the page layout.
+
+<p>
+  <img src="docs/assets/readme/desktop-pet.gif" alt="Animated desktop pet" width="115">
+</p>
+
+### Attention Bubbles
+
+The WebUI adapter sends session attention state to the local sidecar, so the
+desktop pet can surface running work, completed sessions, and approval prompts
+without rendering browser UI.
+
+#### Running and ready sessions
+
+Passive bubbles show what is still running and what is ready for review.
+
+<p>
+  <img src="docs/assets/readme/bubble-status.gif" alt="Running and ready desktop pet bubbles" width="400">
+</p>
+
+#### Approval prompts
+
+Approval-required work expands in place so the user can review the command and
+choose whether to allow it.
+
+<p>
+  <img src="docs/assets/readme/bubble-approval.gif" alt="Desktop pet approval bubble" width="400">
+</p>
+
+#### Clarify prompts
+
+Clarify bubbles can show choices, then expand to an explicit text response when
+the predefined options are not enough.
+
+<p>
+  <img src="docs/assets/readme/bubble-clarify.gif" alt="Desktop pet clarify bubble" width="400">
+</p>
+
+#### Quick reply safety
+
+Quick replies are available from completed-session bubbles, but direct sending
+is gated by an explicit local permission prompt.
+
+<p>
+  <img src="docs/assets/readme/bubble-reply-permission.gif" alt="Desktop pet quick reply permission bubble" width="400">
+</p>
+
+### Pet Gallery / Manager
+
+The manager keeps installed skins and Petdex discovery in one local view while
+delegating install/remove operations to the Hermes pet CLI.
+
+![Pet Gallery / Manager](docs/assets/readme/pet-gallery-manager.gif)
+
+## Project shape
+
+The current milestone includes:
 
 - a manifest-bundled WebUI extension under `extension/`
 - Desktop Pet skins migrated from Hermes WebUI PR #2916
 - a local loopback companion server under `src/`
-- the migrated Tauri desktop pet shell under `desktop-pet/`
+- the Tauri desktop pet shell under `desktop-pet/`
+- Pet Gallery / Manager support for installed Hermes pet skins
 - scripts for wiring the companion into a local Hermes WebUI run
 - a reserved `winui/` folder for the future native Windows host
 
@@ -207,7 +283,7 @@ The sidecar also detects installed Hermes pet skins from
 `<HERMES_HOME>/pets`, defaulting to `~/.hermes/pets`, and exposes those
 spritesheets through its loopback `/api/pet/skins` response. The native pet
 right-click menu keeps quick switching for installed skins and opens a local Pet
-Gallery / Manager for searching PetDeX, installing Hermes pets, removing
+Gallery / Manager for searching Petdex, installing Hermes pets, removing
 installed Hermes pets, and applying a supported installed skin to Desktop
 Companion. Install and remove operations are delegated to the local
 `hermes pets` CLI instead of reimplementing a separate pet store.

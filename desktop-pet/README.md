@@ -68,7 +68,7 @@ added under `extension/pets/<id>/pet.json` plus a local spritesheet. The sidecar
 also detects installed Hermes pets from `<HERMES_HOME>/pets` (defaulting to
 `~/.hermes/pets`) and exposes the combined detected list through
 `/api/pet/skins`.
-Pet Gallery / Manager searches the PetDeX manifest and delegates install/remove
+Pet Gallery / Manager searches the Petdex manifest and delegates install/remove
 operations to the local `hermes pets` CLI so Desktop Companion stays aligned
 with the Hermes pet store rather than maintaining a separate skin registry.
 
@@ -91,9 +91,9 @@ The shell is backed by loopback sidecar endpoints:
   pet right-click menu.
 - `/api/pet/attention` returns the final display list for sessions that need attention.
 - `/api/pet/skins` lists bundled skins plus installed Hermes pet skins.
-- `/api/pet/gallery` searches the PetDeX manifest and annotates results with
+- `/api/pet/gallery` searches the Petdex manifest and annotates results with
   local install and compatibility state.
-- `/api/pet/gallery/install` installs a PetDeX pet by delegating to the local
+- `/api/pet/gallery/install` installs a Petdex pet by delegating to the local
   `hermes pets install` command.
 - `/api/pet/gallery/remove` removes an installed Hermes pet by delegating to the
   local `hermes pets remove` command.

@@ -219,7 +219,7 @@
     els.prev.disabled=state.loadingGallery||state.offset<=0;
     els.next.disabled=state.loadingGallery||!gallery||state.offset+state.limit>=total;
     if(state.loadingGallery&&!gallery){
-      els.galleryGrid.append(create('div','empty-state','Loading PetDeX gallery...'));
+      els.galleryGrid.append(create('div','empty-state','Loading Petdex gallery...'));
       return;
     }
     const pets=gallery&&Array.isArray(gallery.pets)?gallery.pets:[];
@@ -237,7 +237,7 @@
       const body=create('div','pet-body');
       const titleRow=create('div','pet-title-row');
       titleRow.append(create('h3','pet-title',pet.displayName||pet.slug));
-      titleRow.append(create('span',`pet-badge${active?' is-active':''}${unsupported?' is-warning':''}`,active?'Active':(unsupported?'Unsupported':(pet.installed?'Installed':'PetDeX'))));
+      titleRow.append(create('span',`pet-badge${active?' is-active':''}${unsupported?' is-warning':''}`,active?'Active':(unsupported?'Unsupported':(pet.installed?'Installed':'Petdex'))));
       const meta=create('div','pet-meta');
       meta.append(create('span','',pet.slug));
       if(pet.kind) meta.append(create('span','',pet.kind));
