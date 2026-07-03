@@ -222,12 +222,12 @@ Lists Desktop Companion's bundled skins plus installed Hermes pets from
 
 Hermes pet entries use `id: "hermes-<slug>"` and expose their spritesheet
 through `/api/pet/hermes-pets/<slug>/<spritesheet>`. Current 8-column × 9-row
-PetDeX sheets and older 9-column × 8-row sheets are both mapped into the Desktop
+Petdex sheets and older 9-column × 8-row sheets are both mapped into the Desktop
 Companion state names expected by the pet renderer.
 
 ## `GET /api/pet/gallery`
 
-Searches the PetDeX manifest and annotates each result with local install state.
+Searches the Petdex manifest and annotates each result with local install state.
 Results are paginated with `offset` and `limit`; `q` filters by slug, display
 name, kind, or submitter. Compatibility is `unchecked` before install,
 `supported` when the installed spritesheet is renderable by Desktop Companion,
@@ -236,7 +236,7 @@ spritesheet layout.
 
 ## `POST /api/pet/gallery/install`
 
-Installs a PetDeX pet by delegating to the local `hermes pets install <slug>`
+Installs a Petdex pet by delegating to the local `hermes pets install <slug>`
 command. The sidecar then re-reads `<HERMES_HOME>/pets/<slug>` and returns the
 installed state plus a renderable skin manifest when the spritesheet is
 supported.

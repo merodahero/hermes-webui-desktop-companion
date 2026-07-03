@@ -686,7 +686,7 @@ test('pet skins include installed Hermes pets and serve their spritesheets', asy
     await writeFile(path.join(petsRoot, 'panam', 'pet.json'), JSON.stringify({
       id: 'panam',
       displayName: 'Panam',
-      description: 'Hermes-installed PetDeX skin.',
+      description: 'Hermes-installed Petdex skin.',
       spritesheetPath: 'spritesheet.webp'
     }));
     await copyFile(
@@ -771,7 +771,7 @@ test('pet skins include installed Hermes pets and serve their spritesheets', asy
   }
 });
 
-test('pet gallery searches PetDeX manifest and installs through Hermes CLI', async () => {
+test('pet gallery searches Petdex manifest and installs through Hermes CLI', async () => {
   const tmpRoot = await mkdtemp(path.join(os.tmpdir(), 'hermes-pet-gallery-'));
   const petsRoot = path.join(tmpRoot, 'pets');
   const commands = [];
