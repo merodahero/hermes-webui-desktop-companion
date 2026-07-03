@@ -105,6 +105,10 @@ The shell is backed by loopback sidecar endpoints:
 - `/api/pet/action_ack` acknowledges that the WebUI adapter executed a pet action.
 - `/api/approval/respond` queues an approval response for the WebUI adapter.
 - `/api/clarify/respond` queues a clarification response for the WebUI adapter.
+- `/api/pet/open_webui` surfaces the latest Hermes WebUI browser page reported
+  by the adapter without changing sessions. If no browser page has reported yet,
+  it opens the configured WebUI base URL, defaulting to
+  `http://127.0.0.1:8787/`.
 - `/api/pet/open_session` queues a session jump or reply through the existing
   WebUI bridge path, waits briefly for an acknowledgement from an open WebUI
   page, and uses a sanitized loopback browser fallback only when no page consumes

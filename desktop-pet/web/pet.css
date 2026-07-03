@@ -1,11 +1,11 @@
 :root{color-scheme:dark;--pet-width:128px;--pet-height:139px;--pet-window-width:146px;--pet-window-height:139px;--pet-badge-size:26px;--pet-badge-hit-pad:8px;--pet-badge-gap:-24px;--pet-badge-right:16px;--pet-badge-top:14px;--pet-bubble:#f1f3fa;--pet-text:#555a75;--pet-border:rgba(210,214,229,.95);--pet-green:#08b153;}
 html,body{margin:0;width:100%;height:100%;background:transparent;overflow:hidden;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;}
 body{position:relative;outline:0;box-shadow:none;}
-.pet-body{width:var(--pet-window-width);height:var(--pet-window-height);cursor:grab;}
+.pet-body{width:var(--pet-window-width);height:var(--pet-window-height);cursor:default;}
 .pet-bubbles-body{width:100%;height:100%;pointer-events:none;}
 .pet-bubbles-body,.pet-bubbles,.pet-viewport,.pet-list{cursor:pointer;}
 .pet-shell{position:absolute;inset:0;width:var(--pet-window-width);height:var(--pet-window-height);margin:0;user-select:none;-webkit-user-select:none;pointer-events:none;}
-.pet-stage{position:absolute;left:0;bottom:0;width:var(--pet-width);height:var(--pet-height);border:0;padding:0;background:transparent;box-shadow:none;appearance:none;-webkit-appearance:none;cursor:grab;z-index:1;pointer-events:auto;}
+.pet-stage{position:absolute;left:0;bottom:0;width:var(--pet-width);height:var(--pet-height);border:0;padding:0;background:transparent;box-shadow:none;appearance:none;-webkit-appearance:none;cursor:default;z-index:1;pointer-events:auto;}
 .pet-stage:active{cursor:grabbing;}
 .pet-sprite{display:block;width:var(--pet-width);height:var(--pet-height);background:url("../pets/keeper/spritesheet.webp") no-repeat;background-size:800% 900%;pointer-events:none;}
 .pet-badge{position:absolute;left:calc(var(--pet-width) + var(--pet-badge-gap));top:var(--pet-badge-top);box-sizing:border-box;width:var(--pet-badge-size);min-width:var(--pet-badge-size);height:var(--pet-badge-size);padding:0;border:0;border-radius:999px;background:var(--pet-green);color:#fff;display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:800;box-shadow:0 4px 10px rgba(0,0,0,.16);z-index:10;cursor:pointer;pointer-events:auto;appearance:none;-webkit-appearance:none;}

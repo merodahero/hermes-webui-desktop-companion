@@ -11,6 +11,8 @@
   const POLL_MS=1000;
   const FRAME_MS=520;
   const PET_DISPLAY_SCALE=2/3;
+  const DRAG_CLICK_SUPPRESS_PX=4;
+  const DRAG_CLICK_SUPPRESS_MS=450;
   const PET_BADGE_FIXED={right:16,top:14,size:26,gap:-24,hitPad:8};
   let currentPetDisplaySize={width:128,height:139};
   let currentPetWindowSize={width:146,height:139};
@@ -32,6 +34,8 @@
   let petPreferences={enabled:true,allow_direct_send:false,allow_inline_action_responses:false};
   let _isDragging=false;
   let _dragPrevX=null;
+  let dragStartPoint=null;
+  let suppressStageClickUntil=0;
 
   const I18N_FALLBACKS={
     desktop_pet_close:'Close pet',
@@ -76,6 +80,13 @@
     const data=await fetch('/api/pet/preference',{method:'POST',credentials:'include',headers:{'Content-Type':'application/json',..._csrfHeaders()},body:JSON.stringify(patch||{})}).then(res=>{if(!res.ok) throw new Error(`Pet preference update failed: ${res.status}`);return res.json();});
     petPreferences=_normalizePreferences(data);
     return petPreferences;
+  }
+  async function _openWebuiInBrowser(){
+    try{
+      const res=await fetch('/api/pet/open_webui',{method:'POST',credentials:'include',headers:{'Content-Type':'application/json',..._csrfHeaders()},body:'{}'});
+      if(!res.ok) throw new Error(`Pet WebUI open failed: ${res.status}`);
+      return await res.json();
+    }catch(err){console.warn('Failed to open WebUI from pet',err);return null;}
   }
   function _menuLabels(){return {switchSkin:_petT('desktop_pet_switch_skin'),managePets:_petT('desktop_pet_manage_pets'),restartPet:_petT('desktop_pet_restart'),closePet:_petT('desktop_pet_close'),permissionsControl:_petT('desktop_pet_permissions_control'),allowDirectSend:_petT('desktop_pet_permission_allow_direct_send'),allowInlineActionResponses:_petT('desktop_pet_permission_allow_inline_actions')};}
   function _localizeStaticLabels(){
@@ -378,8 +389,30 @@
     if(petLayoutFrameId) return;
     petLayoutFrameId=requestAnimationFrame(()=>{petLayoutFrameId=0;_emitPetLayout().catch(()=>{});});
   }
-  function _startDragLayoutTracking(){
+  function _eventPoint(event){
+    if(!event) return null;
+    const x=Number(Number.isFinite(event.screenX)?event.screenX:event.clientX);
+    const y=Number(Number.isFinite(event.screenY)?event.screenY:event.clientY);
+    return Number.isFinite(x)&&Number.isFinite(y)?{x,y}:null;
+  }
+  function _dragDistanceFromStart(event){
+    const point=_eventPoint(event);
+    if(!dragStartPoint||!point) return 0;
+    return Math.hypot(point.x-dragStartPoint.x,point.y-dragStartPoint.y);
+  }
+  function _suppressNextStageClick(){
+    suppressStageClickUntil=Date.now()+DRAG_CLICK_SUPPRESS_MS;
+  }
+  function _consumeSuppressedStageClick(event){
+    if(Date.now()>suppressStageClickUntil) return false;
+    suppressStageClickUntil=0;
+    if(event&&typeof event.preventDefault==='function') event.preventDefault();
+    if(event&&typeof event.stopPropagation==='function') event.stopPropagation();
+    return true;
+  }
+  function _startDragLayoutTracking(event){
     _isDragging=true;_dragPrevX=null;
+    dragStartPoint=_eventPoint(event);
     dragLayoutTrackUntil=Date.now()+12000;
     if(dragLayoutTrackFrame) return;
     function _emitPetDragLayout(){
@@ -406,8 +439,11 @@
     };
     dragLayoutTrackFrame=requestAnimationFrame(tick);
   }
-  function _stopDragLayoutTracking(){
+  function _stopDragLayoutTracking(event){
+    const dragged=_isDragging&&_dragDistanceFromStart(event)>DRAG_CLICK_SUPPRESS_PX;
+    if(dragged) _suppressNextStageClick();
     _isDragging=false;_dragPrevX=null;
+    dragStartPoint=null;
     dragLayoutTrackUntil=0;
     dragLayoutTrackDirty=false;
     if(dragLayoutTrackFrame){
@@ -438,7 +474,7 @@
     const win=_currentTauriWindow();
     if(!win||typeof win.startDragging!=='function') return;
     if(options.preventDefault===true&&typeof event.preventDefault==='function') event.preventDefault();
-    _startDragLayoutTracking();
+    _startDragLayoutTracking(event);
     try{await win.startDragging();}catch(_){}
     _emitPetLayoutBurst();
   }
@@ -460,6 +496,7 @@
     handler();
   }
   function _onStageClick(event){
+    if(_consumeSuppressedStageClick(event)) return;
     if(_eventInsideBadge(event)){
       event.preventDefault();
       event.stopPropagation();
@@ -467,6 +504,11 @@
       return;
     }
     _setState('jumping');
+    _openWebuiInBrowser();
+  }
+  function _onStageKeyboardActivate(){
+    _setState('jumping');
+    _openWebuiInBrowser();
   }
   async function _openPetContextMenu(event){
     event.preventDefault();
@@ -512,7 +554,7 @@
   window.addEventListener('pointerup',_stopDragLayoutTracking,{capture:true});
   window.addEventListener('blur',_stopDragLayoutTracking);
   stage.addEventListener('click',_onStageClick);
-  stage.addEventListener('keydown',event=>_handleAccessibleKey(event,()=>_setState('jumping')));
+  stage.addEventListener('keydown',event=>_handleAccessibleKey(event,_onStageKeyboardActivate));
   window.addEventListener('storage',event=>{if(event.key===COLLAPSED_KEY||event.key===DISMISSED_KEY) render();});
   setInterval(_tick,FRAME_MS);
   setInterval(refresh,POLL_MS);

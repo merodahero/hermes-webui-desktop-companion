@@ -50,6 +50,7 @@ const LEGACY_PET_ROW_BY_STATE = {
   running: 2,
   review: 4
 };
+const DEFAULT_WEBUI_BASE_URL = 'http://127.0.0.1:8787/';
 const DEFAULT_PREFERENCES = Object.freeze({
   enabled: true,
   allow_direct_send: false,
@@ -277,17 +278,45 @@ function latestAttention(latestSnapshot, now = Date.now()) {
   })).filter((item) => item.session_id && item.status !== 'idle');
 }
 
-function latestWebuiOrigin(latestSnapshot) {
-  const href = latestSnapshot && latestSnapshot.page && latestSnapshot.page.href;
-  if (!href) return null;
+function safeLoopbackWebuiUrl(value) {
+  if (!value) return null;
   try {
-    const url = new URL(href);
+    const url = new URL(String(value));
     const loopback = ['127.0.0.1', 'localhost', '[::1]', '::1'].includes(url.hostname);
     if (!['http:', 'https:'].includes(url.protocol) || !loopback) return null;
-    return url.origin;
+    return url;
   } catch (_) {
     return null;
   }
+}
+
+function latestWebuiUrl(latestSnapshot) {
+  return safeLoopbackWebuiUrl(latestSnapshot && latestSnapshot.page && latestSnapshot.page.href);
+}
+
+function latestWebuiOrigin(latestSnapshot) {
+  const url = latestWebuiUrl(latestSnapshot);
+  return url ? url.origin : null;
+}
+
+function latestWebuiHref(latestSnapshot) {
+  const url = latestWebuiUrl(latestSnapshot);
+  return url ? url.href : null;
+}
+
+function configuredWebuiUrl(options = {}) {
+  return safeLoopbackWebuiUrl(
+    options.webuiBaseUrl
+      || process.env.HERMES_DESKTOP_COMPANION_WEBUI_BASE
+      || DEFAULT_WEBUI_BASE_URL
+  );
+}
+
+function webuiSessionPath(value) {
+  const url = typeof value === 'string' ? safeLoopbackWebuiUrl(value) : value;
+  if (!url) return '';
+  const match = url.pathname.match(/^\/session\/([A-Za-z0-9_-]{1,128})(?:\/)?$/);
+  return match ? `/session/${match[1]}` : '';
 }
 
 function isProcessAlive(pid) {
@@ -391,11 +420,36 @@ function runAppleScript(script, args = [], timeoutMs = 2500) {
 async function focusExistingMacChromeTab(url, origin) {
   const hostCandidates = loopbackHostCandidates(origin || url);
   if (!hostCandidates.length) return normalizeFocusResult(false);
+  const targetSessionPath = webuiSessionPath(url);
   const script = `
+on isSameTargetSession(currentUrl, targetSessionPath)
+  if targetSessionPath is "" then return false
+  if currentUrl does not contain targetSessionPath then return false
+  set oldDelimiters to AppleScript's text item delimiters
+  set AppleScript's text item delimiters to targetSessionPath
+  set urlParts to text items of currentUrl
+  set AppleScript's text item delimiters to oldDelimiters
+  if (count of urlParts) < 2 then return false
+  set suffixText to item 2 of urlParts
+  if suffixText is "" then return true
+  set firstChar to character 1 of suffixText as string
+  if firstChar is "?" then return true
+  if firstChar is "#" then return true
+  if firstChar is "/" then return true
+  return false
+end isSameTargetSession
+
+on shouldNavigate(currentUrl, targetUrl, targetSessionPath)
+  if currentUrl is targetUrl then return false
+  if isSameTargetSession(currentUrl, targetSessionPath) then return false
+  return true
+end shouldNavigate
+
 on run argv
   set targetUrl to item 1 of argv
+  set targetSessionPath to item 2 of argv
   set hostCandidates to {}
-  repeat with idx from 2 to count of argv
+  repeat with idx from 3 to count of argv
     set end of hostCandidates to item idx of argv
   end repeat
   if application "Google Chrome" is not running then return "not_running"
@@ -405,7 +459,9 @@ on run argv
         set activeUrl to URL of active tab of front window
         repeat with hostText in hostCandidates
           if activeUrl contains hostText then
-            set URL of active tab of front window to targetUrl
+            if my shouldNavigate(activeUrl, targetUrl, targetSessionPath) then
+              set URL of active tab of front window to targetUrl
+            end if
             set index of front window to 1
             activate
             try
@@ -421,7 +477,9 @@ on run argv
         set currentUrl to URL of tab tabIndex of window w
         repeat with hostText in hostCandidates
           if currentUrl contains hostText then
-            set URL of tab tabIndex of window w to targetUrl
+            if my shouldNavigate(currentUrl, targetUrl, targetSessionPath) then
+              set URL of tab tabIndex of window w to targetUrl
+            end if
             set active tab index of window w to tabIndex
             try
               set index of window w to 1
@@ -439,7 +497,7 @@ on run argv
   return "not_found"
 end run
 `;
-  const result = await runAppleScript(script, [url, ...hostCandidates]);
+  const result = await runAppleScript(script, [url, targetSessionPath, ...hostCandidates]);
   return normalizeFocusResult({
     focused: result === 'reused',
     reused: result === 'reused',
@@ -1448,6 +1506,24 @@ export function createServer(options = {}) {
         } catch (error) {
           sendPetGalleryCommandError(res, headers, 'pet_skin_selection_failed', error);
         }
+        return;
+      }
+
+      if (req.method === 'POST' && url.pathname === '/api/pet/open_webui') {
+        await readJson(req);
+        const target = latestWebuiUrl(latestSnapshot) || configuredWebuiUrl(options);
+        if (!target) {
+          sendJson(res, 409, { ok: false, error: 'webui_snapshot_unavailable' }, headers);
+          return;
+        }
+        const focused = await focusOrOpenBrowserUrl(target.href, target.origin, options);
+        sendJson(res, 200, {
+          ok: true,
+          opened: focused.opened,
+          focused: focused.focused,
+          reused: focused.reused,
+          url: target.href
+        }, headers);
         return;
       }
 

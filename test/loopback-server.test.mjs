@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { copyFile, mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { copyFile, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { after, before, test } from 'node:test';
@@ -229,6 +229,109 @@ test('pet open_session queues browser navigation command', async () => {
     const ackBody = await ack.json();
     assert.equal(ack.status, 200);
     assert.equal(ackBody.ok, true);
+  } finally {
+    await new Promise((resolve, reject) => {
+      server.close((error) => (error ? reject(error) : resolve()));
+    });
+  }
+});
+
+test('pet open_webui focuses the latest WebUI browser tab', async () => {
+  const focusCalls = [];
+  const server = createServer({
+    preferencePath: null,
+    focusExistingBrowserTab: (url, origin) => {
+      focusCalls.push({ url, origin });
+      return { focused: true, reused: true };
+    },
+    openExternal: () => {
+      throw new Error('openExternal should not run when an existing tab is reused');
+    }
+  });
+  await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
+  const address = server.address();
+  const base = `http://${address.address}:${address.port}`;
+  try {
+    await fetch(`${base}/api/webui/snapshot`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        source: 'hermes-webui',
+        page: { href: 'http://127.0.0.1:8787/session/current?tab=chat#turn-1' }
+      })
+    });
+
+    const open = await fetch(`${base}/api/pet/open_webui`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: '{}'
+    });
+    const body = await open.json();
+
+    assert.equal(open.status, 200);
+    assert.equal(body.ok, true);
+    assert.equal(body.focused, true);
+    assert.equal(body.reused, true);
+    assert.equal(body.opened, false);
+    assert.equal(body.url, 'http://127.0.0.1:8787/session/current?tab=chat#turn-1');
+    assert.deepEqual(focusCalls, [{
+      url: 'http://127.0.0.1:8787/session/current?tab=chat#turn-1',
+      origin: 'http://127.0.0.1:8787'
+    }]);
+  } finally {
+    await new Promise((resolve, reject) => {
+      server.close((error) => (error ? reject(error) : resolve()));
+    });
+  }
+});
+
+test('macOS Chrome tab focus does not reload an already focused target URL', async () => {
+  const source = await readFile(new URL('../src/loopback-server.mjs', import.meta.url), 'utf8');
+
+  assert.match(source, /function webuiSessionPath\(value\)/);
+  assert.match(source, /on shouldNavigate\(currentUrl, targetUrl, targetSessionPath\)/);
+  assert.match(source, /if isSameTargetSession\(currentUrl, targetSessionPath\) then return false/);
+  assert.ok(source.includes('if firstChar is "?" then return true'));
+  assert.ok(source.includes('if firstChar is "#" then return true'));
+  assert.ok(source.includes('if firstChar is "/" then return true'));
+  assert.match(source, /if my shouldNavigate\(activeUrl, targetUrl, targetSessionPath\) then\s+set URL of active tab of front window to targetUrl\s+end if/s);
+  assert.match(source, /if my shouldNavigate\(currentUrl, targetUrl, targetSessionPath\) then\s+set URL of tab tabIndex of window w to targetUrl\s+end if/s);
+});
+
+test('pet open_webui falls back to the configured WebUI base without a snapshot', async () => {
+  const focusCalls = [];
+  const server = createServer({
+    preferencePath: null,
+    webuiBaseUrl: 'http://127.0.0.1:8788/',
+    focusExistingBrowserTab: (url, origin) => {
+      focusCalls.push({ url, origin });
+      return { focused: true, reused: true };
+    },
+    openExternal: () => {
+      throw new Error('openExternal should not run when an existing tab is reused');
+    }
+  });
+  await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
+  const address = server.address();
+  const base = `http://${address.address}:${address.port}`;
+  try {
+    const open = await fetch(`${base}/api/pet/open_webui`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: '{}'
+    });
+    const body = await open.json();
+
+    assert.equal(open.status, 200);
+    assert.equal(body.ok, true);
+    assert.equal(body.focused, true);
+    assert.equal(body.reused, true);
+    assert.equal(body.opened, false);
+    assert.equal(body.url, 'http://127.0.0.1:8788/');
+    assert.deepEqual(focusCalls, [{
+      url: 'http://127.0.0.1:8788/',
+      origin: 'http://127.0.0.1:8788'
+    }]);
   } finally {
     await new Promise((resolve, reject) => {
       server.close((error) => (error ? reject(error) : resolve()));

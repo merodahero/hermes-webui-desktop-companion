@@ -253,6 +253,20 @@ Removes an installed Hermes pet by delegating to
 `hermes pets remove <slug>`. Bundled Desktop Companion skins are not removable
 through this route.
 
+## `POST /api/pet/open_webui`
+
+Surfaces the latest Hermes WebUI browser page reported by the adapter. If no
+WebUI page has reported a snapshot yet, the sidecar falls back to the configured
+WebUI base URL from `HERMES_DESKTOP_COMPANION_WEBUI_BASE`, defaulting to
+`http://127.0.0.1:8787/`.
+
+On macOS, the sidecar first looks for an existing Google Chrome tab on the same
+WebUI loopback origin and focuses/reuses it. If no matching tab is found, it
+falls back to opening the target WebUI URL normally.
+
+This route is used by clicking the desktop pet body. It does not queue a
+navigation command, change sessions, or apply composer draft/autosend behavior.
+
 ## `POST /api/pet/open_session`
 
 Queues an `open_session` command for the WebUI adapter and asks the operating
