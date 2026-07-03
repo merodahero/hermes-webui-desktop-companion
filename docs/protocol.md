@@ -259,11 +259,11 @@ model, and optional action capabilities.
 }
 ```
 
-See `docs/pet-pack-contract.md` for the Pet Pack contract. Pet displays should
-prefer `/api/pet/attention` over raw snapshot parsing unless they need
-diagnostic or experimental data. `custom_display_packs: false` means the
-contract reserves the model, but this sidecar build does not yet load external
-custom display packs.
+See `docs/pet-pack-contract.md` for the Pet Pack contract. Simple displays can
+use `/api/pet/attention`; advanced displays may consume the raw adapter
+snapshot directly when they own their own bridge. `custom_display_packs: false`
+means the contract reserves the model, but this sidecar build does not yet load
+external custom display packs.
 
 ## `POST /api/pet/open_session`
 

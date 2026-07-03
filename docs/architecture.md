@@ -71,9 +71,10 @@ publishes attention state and executes authenticated WebUI actions.
 Pet skins and future pet packs should integrate at the loopback sidecar
 boundary. The user-facing control is Pet Skin; a pack may use the built-in
 display or eventually bring a custom display implementation behind that skin.
-Displays should consume the pet-facing APIs documented in
-`docs/pet-pack-contract.md`, especially `/api/pet/attention`, instead of
-scraping WebUI DOM or depending on raw adapter snapshot internals.
+The WebUI adapter snapshot is the low-level state outlet, while the sidecar APIs
+documented in `docs/pet-pack-contract.md`, especially `/api/pet/attention`, are
+the normalized Desktop Companion surface. Displays should use one of those
+contracted surfaces instead of scraping WebUI DOM.
 
 Current startup flow:
 
