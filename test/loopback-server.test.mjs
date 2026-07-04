@@ -67,6 +67,36 @@ test('health returns service metadata', async () => {
   assert.equal(body.runtime.webui_origin, null);
 });
 
+test('pet capabilities exposes pet pack contract metadata', async () => {
+  const response = await fetch(`${baseUrl}/api/pet/capabilities`);
+  const body = await response.json();
+
+  assert.equal(response.status, 200);
+  assert.equal(body.ok, true);
+  assert.equal(body.pet_pack_contract_version, 1);
+  assert.equal(body.service, 'hermes-webui-desktop-companion');
+  assert.deepEqual(body.pet_model, {
+    user_facing_selection: 'pet_skin',
+    pack_types: ['classic_skin', 'custom_display_pack'],
+    default_pack_type: 'classic_skin',
+    custom_display_packs: false
+  });
+  assert.equal(body.endpoints.attention, '/api/pet/attention');
+  assert.equal(body.endpoints.snapshot, '/api/webui/snapshot');
+  assert.equal(body.endpoints.skins, '/api/pet/skins');
+  assert.equal(body.endpoints.capabilities, '/api/pet/capabilities');
+  assert.deepEqual(body.attention.statuses, ['running', 'ready', 'action_required']);
+  assert.deepEqual(body.attention.sources, ['webui-extension-snapshot', 'empty', 'stale', 'unloaded']);
+  assert.equal(body.attention.stale_after_ms, 30_000);
+  assert.equal(body.capabilities.read_attention, true);
+  assert.equal(body.capabilities.read_snapshot, true);
+  assert.equal(body.capabilities.read_skins, true);
+  assert.equal(body.capabilities.open_session, true);
+  assert.equal(body.capabilities.draft_reply, true);
+  assert.equal(body.capabilities.direct_send, false);
+  assert.equal(body.capabilities.inline_action_responses, false);
+});
+
 test('snapshot endpoint stores latest WebUI snapshot', async () => {
   const snapshot = {
     source: 'hermes-webui',
@@ -651,6 +681,12 @@ test('pet register and preference routes are owned by the sidecar', async () => 
   assert.equal(preferenceGetBody.enabled, false);
   assert.equal(preferenceGetBody.allow_direct_send, true);
   assert.equal(preferenceGetBody.allow_inline_action_responses, true);
+
+  const capabilities = await fetch(`${baseUrl}/api/pet/capabilities`);
+  const capabilitiesBody = await capabilities.json();
+  assert.equal(capabilities.status, 200);
+  assert.equal(capabilitiesBody.capabilities.direct_send, true);
+  assert.equal(capabilitiesBody.capabilities.inline_action_responses, true);
 });
 
 test('desktop pet pages and assets are served by loopback', async () => {

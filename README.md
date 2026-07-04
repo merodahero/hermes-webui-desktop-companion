@@ -251,6 +251,19 @@ HERMES_WEBUI_EXTENSION_SCRIPT_URLS=/extensions/companion-adapter.js \
 ./start.sh
 ```
 
+## Pet skins and packs
+
+Desktop Companion exposes a small Pet Pack contract for pet skins and advanced
+pet packs. The contract keeps the WebUI adapter snapshot as the low-level state
+outlet, and the sidecar APIs as the normalized Desktop Companion surface. Start
+with [`docs/pet-pack-contract.md`](docs/pet-pack-contract.md).
+
+The user-facing model is "choose a Pet Skin." Some future packs may bring their
+own display implementation, but that remains an implementation detail behind the
+selected skin. Pet displays can discover the contract version, stable endpoints,
+status values, and optional action capabilities through
+`GET /api/pet/capabilities`.
+
 ## Disable and uninstall
 
 To disable the WebUI extension, restart Hermes WebUI without:

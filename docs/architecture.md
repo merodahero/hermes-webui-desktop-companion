@@ -68,6 +68,14 @@ The user-visible desktop pet experience requires both the loopback sidecar and
 the native desktop host. The WebUI adapter alone is only the browser bridge that
 publishes attention state and executes authenticated WebUI actions.
 
+Pet skins and future pet packs should integrate at the loopback sidecar
+boundary. The user-facing control is Pet Skin; a pack may use the built-in
+display or eventually bring a custom display implementation behind that skin.
+The WebUI adapter snapshot is the low-level state outlet, while the sidecar APIs
+documented in `docs/pet-pack-contract.md`, especially `/api/pet/attention`, are
+the normalized Desktop Companion surface. Displays should use one of those
+contracted surfaces instead of scraping WebUI DOM.
+
 Current startup flow:
 
 1. The loopback sidecar starts on `127.0.0.1:17787`.
