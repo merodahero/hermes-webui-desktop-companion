@@ -276,9 +276,10 @@ Companion state names expected by the pet renderer.
 
 ## `GET /api/pet/gallery`
 
-Searches the Petdex manifest and annotates each result with local install state.
-Results are paginated with `offset` and `limit`; `q` filters by slug, display
-name, kind, or submitter. Compatibility is `unchecked` before install,
+Searches Petdex's live search API and annotates each result with local install
+state. If live search is unavailable, the sidecar falls back to the static
+Petdex manifest. Results are paginated with `offset` and `limit`; `q` filters
+by slug, display name, kind, or submitter. Compatibility is `unchecked` before install,
 `supported` when the installed spritesheet is renderable by Desktop Companion,
 and `unsupported` when the pet exists locally but does not match a supported
 spritesheet layout.
@@ -286,9 +287,12 @@ spritesheet layout.
 ## `POST /api/pet/gallery/install`
 
 Installs a Petdex pet by delegating to the local `hermes pets install <slug>`
-command. The sidecar then re-reads `<HERMES_HOME>/pets/<slug>` and returns the
-installed state plus a renderable skin manifest when the spritesheet is
-supported.
+command. If the CLI fails because its static Petdex manifest has not caught up
+with a live approved pet, the sidecar fetches `/api/install-pet/<slug>`,
+downloads the pet JSON and spritesheet, and writes them into
+`<HERMES_HOME>/pets/<slug>`. The sidecar then re-reads the installed pet and
+returns the installed state plus a renderable skin manifest when the spritesheet
+is supported.
 
 ```json
 {

@@ -908,6 +908,123 @@ test('pet gallery searches Petdex manifest and installs through Hermes CLI', asy
   }
 });
 
+test('pet gallery uses Petdex live search and falls back when the Hermes CLI manifest lags', async () => {
+  const tmpRoot = await mkdtemp(path.join(os.tmpdir(), 'hermes-petdex-live-'));
+  const petsRoot = path.join(tmpRoot, 'pets');
+  const sprite = await readFile(new URL('../extension/pets/keeper/spritesheet.webp', import.meta.url));
+  const commands = [];
+  const requests = [];
+  const mayPetJson = {
+    id: 'may',
+    displayName: 'May',
+    description: 'A calm black-and-white chibi companion for careful work, quiet reviews, and evidence-first decisions.',
+    spritesheetPath: 'spritesheet.webp'
+  };
+
+  const fakeFetch = async (requestUrl) => {
+    const url = new URL(String(requestUrl));
+    requests.push(url.toString());
+    if (url.pathname === '/api/pets/search') {
+      assert.equal(url.searchParams.get('q'), 'may');
+      return Response.json({
+        pets: [
+          {
+            slug: 'may',
+            displayName: 'May',
+            description: mayPetJson.description,
+            kind: 'character',
+            submittedBy: { name: 'franksong2702' },
+            spritesheetPath: 'https://assets.petdex.dev/pets/may-8b80a31dc19f/sprite.webp',
+            zipUrl: 'https://assets.petdex.dev/pets/may-8b80a31dc19f/zip.zip'
+          }
+        ],
+        total: 1
+      });
+    }
+    if (url.pathname === '/api/install-pet/may') {
+      return Response.json({
+        ok: true,
+        pet: {
+          slug: 'may',
+          displayName: 'May',
+          petJsonUrl: 'https://assets.petdex.dev/pets/may-8b80a31dc19f/petjson.json',
+          spritesheetUrl: 'https://assets.petdex.dev/pets/may-8b80a31dc19f/sprite.webp',
+          spriteExt: 'webp'
+        }
+      });
+    }
+    if (url.pathname === '/pets/may-8b80a31dc19f/petjson.json') {
+      return Response.json(mayPetJson);
+    }
+    if (url.pathname === '/pets/may-8b80a31dc19f/sprite.webp') {
+      return new Response(sprite, { headers: { 'content-type': 'image/webp' } });
+    }
+    return Response.json({ ok: false, error: 'not_found' }, { status: 404 });
+  };
+
+  try {
+    const localServer = createServer({
+      preferencePath: null,
+      hermesPetsDir: petsRoot,
+      disablePetGalleryManifestFallback: true,
+      fetch: fakeFetch,
+      runHermesPetsCommand: async (args) => {
+        commands.push(args);
+        throw Object.assign(new Error("install failed: pet 'may' is not in the petdex manifest"), {
+          statusCode: 502,
+          code: 'hermes_cli_failed',
+          stderr: "✗ install failed: pet 'may' is not in the petdex manifest"
+        });
+      }
+    });
+    await new Promise((resolve) => localServer.listen(0, '127.0.0.1', resolve));
+    const address = localServer.address();
+    const url = `http://${address.address}:${address.port}`;
+    try {
+      const gallery = await fetch(`${url}/api/pet/gallery?q=may`);
+      const galleryBody = await gallery.json();
+      assert.equal(gallery.status, 200);
+      assert.equal(galleryBody.source, 'petdex-live');
+      assert.equal(galleryBody.total, 1);
+      assert.equal(galleryBody.pets[0].slug, 'may');
+      assert.equal(galleryBody.pets[0].submittedBy, 'franksong2702');
+      assert.equal(galleryBody.pets[0].installed, false);
+
+      const preview = await fetch(`${url}/api/pet/gallery/preview/may`);
+      assert.equal(preview.status, 200);
+      assert.equal(preview.headers.get('content-type'), 'image/webp');
+      assert.ok((await preview.arrayBuffer()).byteLength > 1024);
+
+      const install = await fetch(`${url}/api/pet/gallery/install`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ slug: 'may' })
+      });
+      const installBody = await install.json();
+      assert.equal(install.status, 200);
+      assert.equal(installBody.ok, true);
+      assert.equal(installBody.installed, true);
+      assert.equal(installBody.supported, true);
+      assert.equal(installBody.installSource, 'petdex-direct');
+      assert.equal(installBody.skin.id, 'hermes-may');
+      assert.equal(installBody.skin.displayName, 'May');
+      assert.deepEqual(commands[0], ['pets', 'install', 'may']);
+
+      const installedManifest = JSON.parse(await readFile(path.join(petsRoot, 'may', 'pet.json'), 'utf8'));
+      assert.equal(installedManifest.id, 'may');
+      assert.equal(installedManifest.spritesheetPath, 'spritesheet.webp');
+      assert.ok(requests.some((value) => value.includes('/api/pets/search?')));
+      assert.ok(requests.some((value) => value.endsWith('/api/install-pet/may')));
+    } finally {
+      await new Promise((resolve, reject) => {
+        localServer.close((error) => (error ? reject(error) : resolve()));
+      });
+    }
+  } finally {
+    await rm(tmpRoot, { recursive: true, force: true });
+  }
+});
+
 test('pet skin selection can be set from the manager page', async () => {
   const localServer = createServer({ preferencePath: null });
   await new Promise((resolve) => localServer.listen(0, '127.0.0.1', resolve));
