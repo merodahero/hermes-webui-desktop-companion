@@ -123,9 +123,9 @@ sidecar:
 }
 ```
 
-This field is descriptive until Hermes WebUI lands a formal sidecar manifest
-contract. It does not imply auto-install, auto-start, proxying, or native host
-permission.
+Hermes WebUI can use this field for extension diagnostics, sidecar health
+display, and any consent-gated fixed sidecar proxy surface it supports. It still
+does not imply auto-install, auto-start, or native host permission.
 
 It should stay small, auditable, additive, and reversible. It must not render
 browser UI, replace WebUI containers, or depend on private DOM structure.
@@ -272,9 +272,9 @@ This project is for trusted local use. The injected adapter can call WebUI APIs
 with the same browser session authority as the logged-in user. Only enable it
 from a directory you control.
 
-The loopback server does not authenticate requests in this first scaffold. It
-binds to `127.0.0.1` by default and only accepts loopback WebUI origins by
-default. Do not expose it on a public interface.
+The loopback server does not authenticate loopback requests itself in the
+current local beta. It binds to `127.0.0.1` by default and only accepts loopback
+WebUI origins by default. Do not expose it on a public interface.
 
 The sidecar serves local pet assets and stores only the latest in-memory WebUI
 snapshot received from the adapter. It persists only local pet preferences under
@@ -302,12 +302,24 @@ Current required WebUI capabilities:
 - extension manifest bundles through `HERMES_WEBUI_EXTENSION_MANIFEST`
 - same-origin extension assets under `/extensions/`
 - browser access to existing authenticated WebUI session APIs
+- loopback browser access to `http://127.0.0.1:17787`
+
+Current optional WebUI capabilities:
+
+- sanitized sidecar diagnostics and browser-side health display from the
+  manifest `sidecar` declaration
+- consent-gated fixed sidecar proxy paths for extensions that need same-origin
+  browser requests to a declared loopback helper
+- browser-local extension settings/storage if a future Desktop Companion
+  manifest needs user-editable extension settings
 
 Pending or future WebUI capabilities:
 
-- sidecar metadata support in extension manifests
-- extension settings/status UI that can display sidecar health
-- optional backend bridge or proxy contract for richer local integrations
+- WebUI-managed sidecar/native-host lifecycle
+- a formal extension runtime API for live session state and companion actions,
+  so the adapter can rely less on guarded WebUI globals
+- richer backend bridge support if a future feature outgrows the direct
+  browser/loopback/proxy path
 
 See `docs/compatibility.md` for the current compatibility notes.
 
@@ -318,19 +330,21 @@ npm test
 npm run dev
 ```
 
-The project has no runtime npm dependencies in the first scaffold.
+The root package currently has no runtime npm dependencies. The native Tauri
+shell manages its own dependencies under `desktop-pet/`, and
+`npm run start:pet` installs them when missing.
 
 ## Extension-library fit
 
-This repo should enter a future `hermes-webui-extensions` library as a richer
-trusted-local example, not as a WebUI core patch:
+Desktop Companion should stay in the Hermes WebUI extension ecosystem as a
+richer trusted-local example, not as a WebUI core patch:
 
 - extension assets are packaged by `extension/manifest.json`
 - WebUI core changes are not required
 - the local sidecar binds to `127.0.0.1` and owns desktop-only protocol state
 - the manifest documents the sidecar with `type`, `origin`, and `health_path`
 - the Tauri host remains outside Hermes WebUI
-- future WebUI plugin backend support can replace or formalize the sidecar
+- official WebUI extension backend support can replace or formalize the sidecar
   boundary when that upstream API is ready
 
 See `docs/extension-library-submission.md` for the proposed submission shape.
@@ -339,12 +353,12 @@ See `docs/extension-library-submission.md` for the proposed submission shape.
 
 - Expand the snapshot and action protocol.
 - Add a native Windows host in `winui/`.
-- Add explicit user consent for any companion action that triggers WebUI APIs.
-- Track upstream extension diagnostics and backend-route work.
+- Broaden consent UX for any new companion action that triggers WebUI APIs.
+- Track upstream extension runtime and backend-bridge work.
 
 ## Migration Notes
 
-The first runnable plugin-mode pet migrates the #2916 skin assets and the
+The initial runnable plugin-mode pet migrates the #2916 skin assets and the
 spritesheet animation model plus the Tauri desktop shell. It intentionally does
 not migrate WebUI Python routes, settings controls, slash commands, or WebUI
 launch/install routes. Those become companion-owned or protocol-owned features

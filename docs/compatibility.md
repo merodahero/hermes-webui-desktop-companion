@@ -23,11 +23,10 @@ does not yet expose a formal extension runtime API for live session state:
 Every use is wrapped so the adapter can fail closed instead of breaking the
 WebUI page when a global is absent or changes shape.
 
-## Declared For Future WebUI Support
+## Declared Extension Metadata
 
 - PR #10-style `extension.json` entry metadata:
   - `capabilities: ["manifest-bundle", "loopback-sidecar"]`
-  - no `sidecar-proxy` declaration until core ships that capability
   - lifecycle split for WebUI assets, sidecar start, and native host start
   - purpose-based permissions for WebUI API reads, navigation, storage, DOM,
     loopback sidecar, native host, and bundled asset serving
@@ -35,8 +34,13 @@ WebUI page when a global is absent or changes shape.
   - `type: "loopback"`
   - `origin: "http://127.0.0.1:17787"`
   - `health_path: "/health"`
-- Read-only sidecar health display in an extension settings or diagnostics UI.
-- Optional backend bridge or proxy contract if the main repo later supports it.
+
+Current Hermes WebUI builds can surface sanitized sidecar diagnostics, perform
+browser-side health checks, and expose consent-gated fixed sidecar proxy paths
+for declared loopback sidecars. Desktop Companion does not require the proxy for
+its current browser adapter path, but the metadata should stay accurate so WebUI
+can display sidecar health and future companion capabilities have a stable
+place to attach.
 
 ## Current Health Contract
 
@@ -71,5 +75,6 @@ WebUI page when a global is absent or changes shape.
 ## Known Pending Work
 
 - Main WebUI does not yet manage sidecar lifecycle.
-- Main WebUI does not yet proxy sidecar routes.
+- Desktop Companion still relies on guarded WebUI browser globals because there
+  is no formal live-session/action extension runtime API yet.
 - The sidecar stores current state in memory only.
