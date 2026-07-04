@@ -77,7 +77,9 @@ is gated by an explicit local permission prompt.
 ### Pet Gallery / Manager
 
 The manager keeps installed skins and Petdex discovery in one local view while
-delegating install/remove operations to the Hermes pet CLI.
+delegating install/remove operations to the Hermes pet CLI. It follows the
+system light/dark appearance so the native manager fits the current desktop
+theme.
 
 ![Pet Gallery / Manager](docs/assets/readme/pet-gallery-manager.gif)
 

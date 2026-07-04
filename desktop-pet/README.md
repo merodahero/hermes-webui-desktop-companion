@@ -70,7 +70,8 @@ also detects installed Hermes pets from `<HERMES_HOME>/pets` (defaulting to
 `/api/pet/skins`.
 Pet Gallery / Manager searches the Petdex manifest and delegates install/remove
 operations to the local `hermes pets` CLI so Desktop Companion stays aligned
-with the Hermes pet store rather than maintaining a separate skin registry.
+with the Hermes pet store rather than maintaining a separate skin registry. The
+manager page follows the operating system light/dark color scheme.
 
 Skin manifests use:
 
