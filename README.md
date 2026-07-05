@@ -19,7 +19,7 @@ Tauri host.
 | Native Desktop Pet | Runs as a transparent always-on-top desktop window instead of an in-page browser widget. |
 | WebUI attention bridge | Watches running, ready, approval, and clarify states from Hermes WebUI and shows desktop bubbles when work needs attention. |
 | Click to WebUI | Clicking the pet focuses or opens the matching Hermes WebUI tab without refreshing an already-open target session. |
-| Pet Gallery / Manager | Searches Petdex, installs Hermes pets through the local `hermes pets` CLI, switches skins, and removes installed pets. |
+| Pet Gallery / Manager | Searches live Petdex results, installs Hermes pets, switches skins, and removes installed pets. |
 | Permission control | Direct quick replies and inline approval/clarify responses are default-off and require explicit local opt-in. |
 
 ## Feature tour
@@ -77,9 +77,13 @@ is gated by an explicit local permission prompt.
 ### Pet Gallery / Manager
 
 The manager keeps installed skins and Petdex discovery in one local view while
-delegating install/remove operations to the Hermes pet CLI. It follows the
-system light/dark appearance so the native manager fits the current desktop
-theme.
+delegating install/remove operations to the Hermes pet CLI when possible. If
+the local CLI is behind Petdex's live approval state, the sidecar can fall back
+to Petdex's install metadata and write the pet into the local Hermes pets
+directory. `May` stays bundled as the offline/default fallback so the desktop
+pet and the manager entry remain available even before a user installs any
+Petdex pets. The manager follows the system light/dark appearance so the native
+manager fits the current desktop theme.
 
 ![Pet Gallery / Manager](docs/assets/readme/pet-gallery-manager.gif)
 
@@ -300,8 +304,10 @@ spritesheets through its loopback `/api/pet/skins` response. The native pet
 right-click menu keeps quick switching for installed skins and opens a local Pet
 Gallery / Manager for searching Petdex, installing Hermes pets, removing
 installed Hermes pets, and applying a supported installed skin to Desktop
-Companion. Install and remove operations are delegated to the local
-`hermes pets` CLI instead of reimplementing a separate pet store.
+Companion. Install operations prefer the local `hermes pets` CLI and fall back
+to Petdex install metadata when the CLI's static manifest has not caught up with
+live Petdex approvals. Remove operations still use the local `hermes pets` CLI
+so Desktop Companion does not become a second pet store.
 
 Direct quick-reply sending and inline approval/clarify responses are default-off
 local permissions. The first attempt from the desktop pet shows a confirmation

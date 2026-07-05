@@ -63,15 +63,19 @@ First-time shell preparation is owned by this companion project, not by Hermes
 WebUI core. WebUI only loads the adapter; it does not install or launch the
 native host in the current milestone.
 
-The default bundled skin is `keeper` / `May`. Additional bundled skins can be
+The default bundled skin is `keeper` / `May`. It is kept as the offline/default
+fallback so the native pet, context menu, and Pet Gallery / Manager are still
+available before any Petdex pet is installed. Additional bundled skins can be
 added under `extension/pets/<id>/pet.json` plus a local spritesheet. The sidecar
 also detects installed Hermes pets from `<HERMES_HOME>/pets` (defaulting to
 `~/.hermes/pets`) and exposes the combined detected list through
 `/api/pet/skins`.
-Pet Gallery / Manager searches the Petdex manifest and delegates install/remove
-operations to the local `hermes pets` CLI so Desktop Companion stays aligned
-with the Hermes pet store rather than maintaining a separate skin registry. The
-manager page follows the operating system light/dark color scheme.
+Pet Gallery / Manager searches Petdex live results and delegates install/remove
+operations to the local `hermes pets` CLI when possible. If the CLI's static
+manifest has not caught up with a live approved pet, install falls back to
+Petdex's install metadata and writes the pet into the local Hermes pets
+directory. The manager page follows the operating system light/dark color
+scheme.
 
 Skin manifests use:
 
@@ -92,10 +96,12 @@ The shell is backed by loopback sidecar endpoints:
   pet right-click menu.
 - `/api/pet/attention` returns the final display list for sessions that need attention.
 - `/api/pet/skins` lists bundled skins plus installed Hermes pet skins.
-- `/api/pet/gallery` searches the Petdex manifest and annotates results with
-  local install and compatibility state.
+- `/api/pet/gallery` searches Petdex live results, falls back to the static
+  manifest when needed, and annotates results with local install and
+  compatibility state.
 - `/api/pet/gallery/install` installs a Petdex pet by delegating to the local
-  `hermes pets install` command.
+  `hermes pets install` command, with a Petdex metadata fallback when the local
+  CLI manifest lags live approvals.
 - `/api/pet/gallery/remove` removes an installed Hermes pet by delegating to the
   local `hermes pets remove` command.
 - `/api/pet/hermes-pets/<slug>/<spritesheet>` serves a detected Hermes pet

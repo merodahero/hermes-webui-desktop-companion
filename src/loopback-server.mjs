@@ -1,7 +1,7 @@
 import http from 'node:http';
 import { spawn } from 'node:child_process';
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
-import { readdir, readFile, stat } from 'node:fs/promises';
+import { mkdir, readdir, readFile, rm, stat, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -25,6 +25,8 @@ const PET_FRAME_WIDTH = 192;
 const PET_FRAME_HEIGHT = 208;
 const PET_FRAMES_PER_STATE = 6;
 const PET_GALLERY_MANIFEST_URL = 'https://petdex.dev/api/manifest';
+const PET_GALLERY_SEARCH_URL = 'https://petdex.dev/api/pets/search';
+const PET_GALLERY_INSTALL_URL = 'https://petdex.dev/api/install-pet';
 const PET_GALLERY_CACHE_MS = 5 * 60 * 1000;
 const PET_GALLERY_DEFAULT_LIMIT = 12;
 const PET_GALLERY_MAX_LIMIT = 48;
@@ -760,27 +762,47 @@ function normalizeGalleryPet(raw) {
   if (!slug) return null;
   const displayName = String(source.displayName || source.name || slug).replace(/\s+/g, ' ').trim() || slug;
   const kind = String(source.kind || '').replace(/\s+/g, ' ').trim();
-  const submittedBy = String(source.submittedBy || '').replace(/\s+/g, ' ').trim();
-  const spritesheetUrl = String(source.spritesheetUrl || '').trim();
+  const submittedBySource = source.submittedBy && typeof source.submittedBy === 'object'
+    ? source.submittedBy.name || source.submittedBy.handle || source.submittedBy.username
+    : source.submittedBy;
+  const submittedBy = String(submittedBySource || '').replace(/\s+/g, ' ').trim();
+  const spritesheetUrl = String(source.spritesheetUrl || source.spritesheetPath || '').trim();
+  const description = String(source.description || '').replace(/\s+/g, ' ').trim();
+  const zipUrl = String(source.zipUrl || '').trim();
   return {
     slug,
     displayName,
     kind,
     submittedBy,
+    description,
     spritesheetUrl: /^https?:\/\//.test(spritesheetUrl) ? spritesheetUrl : '',
+    zipUrl: /^https?:\/\//.test(zipUrl) ? zipUrl : '',
     previewUrl: `/api/pet/gallery/preview/${encodeURIComponent(slug)}`,
     source: 'petdex'
   };
 }
 
+function petGallerySearchUrl(options = {}) {
+  return String(options.petGallerySearchUrl || process.env.HERMES_PETDEX_SEARCH_URL || PET_GALLERY_SEARCH_URL);
+}
+
+function petGalleryInstallUrl(options = {}, slug = '') {
+  const base = String(options.petGalleryInstallUrl || process.env.HERMES_PETDEX_INSTALL_URL || PET_GALLERY_INSTALL_URL).replace(/\/+$/g, '');
+  return `${base}/${encodeURIComponent(slug)}`;
+}
+
+function testPetGalleryManifest(options = {}) {
+  if (!Array.isArray(options.petGalleryPets)) return null;
+  return {
+    generatedAt: null,
+    total: options.petGalleryPets.length,
+    pets: options.petGalleryPets
+  };
+}
+
 async function fetchPetGalleryManifest(options = {}) {
-  if (Array.isArray(options.petGalleryPets)) {
-    return {
-      generatedAt: null,
-      total: options.petGalleryPets.length,
-      pets: options.petGalleryPets
-    };
-  }
+  const fixtureManifest = testPetGalleryManifest(options);
+  if (fixtureManifest) return fixtureManifest;
 
   const manifestUrl = String(options.petGalleryManifestUrl || process.env.HERMES_PETDEX_MANIFEST_URL || PET_GALLERY_MANIFEST_URL);
   const now = Date.now();
@@ -807,21 +829,85 @@ async function fetchPetGalleryManifest(options = {}) {
   return manifest;
 }
 
-async function petGalleryResponse(url, options = {}) {
+async function petGalleryFromManifest(query, offset, limit, options = {}) {
   const manifest = await fetchPetGalleryManifest(options);
-  const installedSkins = await hermesPetSkins(options);
-  const installedBySlug = new Map(installedSkins.map((skin) => [skin.hermesPetSlug, skin]));
-  const installedSlugs = await installedHermesPetSlugs(options);
-  const query = String(url.searchParams.get('q') || '').replace(/\s+/g, ' ').trim().toLowerCase();
-  const offset = normalizePetGalleryOffset(url.searchParams.get('offset'));
-  const limit = normalizePetGalleryLimit(url.searchParams.get('limit'));
   const allPets = (Array.isArray(manifest && manifest.pets) ? manifest.pets : [])
     .map(normalizeGalleryPet)
     .filter(Boolean);
   const filtered = query
     ? allPets.filter((pet) => [pet.slug, pet.displayName, pet.kind, pet.submittedBy].some((value) => String(value || '').toLowerCase().includes(query)))
     : allPets;
-  const pets = filtered.slice(offset, offset + limit).map((pet) => ({
+  return {
+    source: 'petdex-manifest',
+    generatedAt: manifest && manifest.generatedAt || null,
+    total: filtered.length,
+    manifestTotal: Number(manifest && manifest.total || allPets.length),
+    pets: filtered.slice(offset, offset + limit)
+  };
+}
+
+async function petGalleryFromLiveSearch(query, offset, limit, options = {}) {
+  const fetchImpl = options.fetch || globalThis.fetch;
+  if (typeof fetchImpl !== 'function') {
+    throw Object.assign(new Error('Pet gallery fetch is not available'), { statusCode: 502, code: 'pet_gallery_fetch_unavailable' });
+  }
+  const searchUrl = new URL(petGallerySearchUrl(options));
+  if (query) searchUrl.searchParams.set('q', query);
+  searchUrl.searchParams.set('sort', 'recent');
+  searchUrl.searchParams.set('cursor', String(offset));
+  searchUrl.searchParams.set('limit', String(limit));
+  searchUrl.searchParams.set('includeMeta', '1');
+  const now = Date.now();
+  const cacheKey = searchUrl.toString();
+  if (petGalleryCache && petGalleryCache.url === cacheKey && petGalleryCache.expiresAt > now) {
+    return petGalleryCache.manifest;
+  }
+  const response = await fetchImpl(searchUrl, {
+    headers: { accept: 'application/json' }
+  });
+  if (!response || !response.ok) {
+    throw Object.assign(new Error(`Pet gallery search failed: ${response && response.status || 'unknown'}`), { statusCode: 502, code: 'pet_gallery_search_failed' });
+  }
+  const body = await response.json();
+  const pets = (Array.isArray(body && body.pets) ? body.pets : [])
+    .map(normalizeGalleryPet)
+    .filter(Boolean);
+  const result = {
+    source: 'petdex-live',
+    generatedAt: null,
+    total: Number(body && body.total || pets.length),
+    manifestTotal: Number(body && body.total || pets.length),
+    pets
+  };
+  petGalleryCache = {
+    url: cacheKey,
+    expiresAt: now + PET_GALLERY_CACHE_MS,
+    manifest: result
+  };
+  return result;
+}
+
+async function petGalleryPage(query, offset, limit, options = {}) {
+  if (Array.isArray(options.petGalleryPets)) {
+    return petGalleryFromManifest(query, offset, limit, options);
+  }
+  try {
+    return await petGalleryFromLiveSearch(query, offset, limit, options);
+  } catch (error) {
+    if (options.disablePetGalleryManifestFallback === true) throw error;
+    return petGalleryFromManifest(query, offset, limit, options);
+  }
+}
+
+async function petGalleryResponse(url, options = {}) {
+  const installedSkins = await hermesPetSkins(options);
+  const installedBySlug = new Map(installedSkins.map((skin) => [skin.hermesPetSlug, skin]));
+  const installedSlugs = await installedHermesPetSlugs(options);
+  const query = String(url.searchParams.get('q') || '').replace(/\s+/g, ' ').trim().toLowerCase();
+  const offset = normalizePetGalleryOffset(url.searchParams.get('offset'));
+  const limit = normalizePetGalleryLimit(url.searchParams.get('limit'));
+  const page = await petGalleryPage(query, offset, limit, options);
+  const pets = page.pets.map((pet) => ({
     ...pet,
     installed: installedSlugs.has(pet.slug),
     skinId: installedSlugs.has(pet.slug) ? `hermes-${pet.slug}` : null,
@@ -832,9 +918,10 @@ async function petGalleryResponse(url, options = {}) {
   }));
   return {
     ok: true,
-    generatedAt: manifest && manifest.generatedAt || null,
-    total: filtered.length,
-    manifestTotal: Number(manifest && manifest.total || allPets.length),
+    source: page.source,
+    generatedAt: page.generatedAt,
+    total: page.total,
+    manifestTotal: page.manifestTotal,
     offset,
     limit,
     query,
@@ -846,6 +933,16 @@ async function petGalleryResponse(url, options = {}) {
 async function petGalleryPetBySlug(slug, options = {}) {
   const safeSlug = safePetSlug(slug);
   if (!safeSlug) return null;
+  if (!Array.isArray(options.petGalleryPets)) {
+    try {
+      const metadata = await fetchPetdexInstallMetadata(safeSlug, options);
+      return normalizeGalleryPet({
+        slug: metadata.slug,
+        displayName: metadata.displayName,
+        spritesheetUrl: metadata.spritesheetUrl
+      });
+    } catch (_) {}
+  }
   const manifest = await fetchPetGalleryManifest(options);
   return (Array.isArray(manifest && manifest.pets) ? manifest.pets : [])
     .map(normalizeGalleryPet)
@@ -973,6 +1070,121 @@ async function installedPetState(slug, options = {}) {
   };
 }
 
+function isHttpUrl(value) {
+  try {
+    const url = new URL(String(value || ''));
+    return url.protocol === 'https:' || url.protocol === 'http:';
+  } catch (_) {
+    return false;
+  }
+}
+
+async function fetchJsonFromUrl(url, options = {}, errorCode = 'petdex_fetch_failed') {
+  const fetchImpl = options.fetch || globalThis.fetch;
+  if (typeof fetchImpl !== 'function') {
+    throw Object.assign(new Error('Petdex fetch is not available'), { statusCode: 502, code: 'petdex_fetch_unavailable' });
+  }
+  const response = await fetchImpl(url, {
+    headers: { accept: 'application/json' }
+  });
+  if (!response || !response.ok) {
+    throw Object.assign(new Error(`Petdex fetch failed: ${response && response.status || 'unknown'}`), { statusCode: 502, code: errorCode });
+  }
+  return response.json();
+}
+
+async function fetchBufferFromUrl(url, options = {}, errorCode = 'petdex_asset_fetch_failed') {
+  const fetchImpl = options.fetch || globalThis.fetch;
+  if (typeof fetchImpl !== 'function') {
+    throw Object.assign(new Error('Petdex fetch is not available'), { statusCode: 502, code: 'petdex_fetch_unavailable' });
+  }
+  const response = await fetchImpl(url, {
+    headers: { accept: 'image/avif,image/webp,image/png,image/*,*/*;q=0.8' }
+  });
+  if (!response || !response.ok) {
+    throw Object.assign(new Error(`Petdex asset fetch failed: ${response && response.status || 'unknown'}`), { statusCode: 502, code: errorCode });
+  }
+  return Buffer.from(await response.arrayBuffer());
+}
+
+async function fetchPetdexInstallMetadata(slug, options = {}) {
+  const safeSlug = safePetSlug(slug);
+  if (!safeSlug) {
+    throw Object.assign(new Error('invalid_pet_slug'), { statusCode: 400, code: 'invalid_pet_slug' });
+  }
+  const body = await fetchJsonFromUrl(petGalleryInstallUrl(options, safeSlug), options, 'petdex_install_metadata_failed');
+  const pet = body && body.pet && typeof body.pet === 'object' ? body.pet : null;
+  if (!body || body.ok !== true || !pet || safePetSlug(pet.slug) !== safeSlug || !isHttpUrl(pet.petJsonUrl) || !isHttpUrl(pet.spritesheetUrl)) {
+    throw Object.assign(new Error(`Petdex install metadata not found for ${safeSlug}`), { statusCode: 404, code: 'petdex_install_metadata_not_found' });
+  }
+  return {
+    slug: safeSlug,
+    displayName: String(pet.displayName || safeSlug).replace(/\s+/g, ' ').trim() || safeSlug,
+    petJsonUrl: String(pet.petJsonUrl),
+    spritesheetUrl: String(pet.spritesheetUrl),
+    spriteExt: String(pet.spriteExt || '').replace(/[^A-Za-z0-9]/g, '').toLowerCase()
+  };
+}
+
+function shouldUseDirectPetdexInstall(error) {
+  if (!error || error.code !== 'hermes_cli_failed') return false;
+  const output = `${error.message || ''}\n${error.stdout || ''}\n${error.stderr || ''}`.toLowerCase();
+  return /petdex manifest|not in the manifest|not in petdex manifest|not found in manifest/.test(output);
+}
+
+function localSpritesheetName(manifest, metadata) {
+  const declared = String(manifest && manifest.spritesheetPath || '').trim();
+  const declaredName = declared ? path.basename(declared) : '';
+  if (declaredName && !declaredName.startsWith('.')) return declaredName;
+  const ext = metadata.spriteExt || path.extname(new URL(metadata.spritesheetUrl).pathname).replace(/^\./, '') || 'webp';
+  return `spritesheet.${ext}`;
+}
+
+async function installPetdexPetDirect(slug, body, options = {}, cliError = null) {
+  const root = hermesPetsRoot(options);
+  if (!root) {
+    throw Object.assign(new Error('Hermes pets directory is unavailable'), { statusCode: 500, code: 'hermes_pets_dir_unavailable' });
+  }
+  const metadata = await fetchPetdexInstallMetadata(slug, options);
+  const petJson = await fetchJsonFromUrl(metadata.petJsonUrl, options, 'petdex_pet_json_fetch_failed');
+  const manifest = petJson && typeof petJson === 'object' ? petJson : {};
+  const spritesheetName = localSpritesheetName(manifest, metadata);
+  const spritesheet = await fetchBufferFromUrl(metadata.spritesheetUrl, options, 'petdex_spritesheet_fetch_failed');
+  const directory = path.join(root, metadata.slug);
+  const relative = path.relative(root, directory);
+  if (relative.startsWith('..') || path.isAbsolute(relative)) {
+    throw Object.assign(new Error('invalid_pet_slug'), { statusCode: 400, code: 'invalid_pet_slug' });
+  }
+  if (body && body.force === true) {
+    await rm(directory, { recursive: true, force: true });
+  }
+  await mkdir(directory, { recursive: true });
+  const finalManifest = {
+    ...manifest,
+    id: safePetSlug(manifest.id) || metadata.slug,
+    displayName: String(manifest.displayName || metadata.displayName || metadata.slug).replace(/\s+/g, ' ').trim() || metadata.slug,
+    spritesheetPath: spritesheetName
+  };
+  await writeFile(path.join(directory, 'pet.json'), `${JSON.stringify(finalManifest, null, 2)}\n`);
+  const spritesheetPath = safeChildPath(directory, spritesheetName);
+  if (!spritesheetPath) {
+    throw Object.assign(new Error('invalid_spritesheet_path'), { statusCode: 502, code: 'invalid_spritesheet_path' });
+  }
+  await writeFile(spritesheetPath, spritesheet);
+  const state = await installedPetState(metadata.slug, options);
+  return {
+    ok: state.installed,
+    slug: metadata.slug,
+    installed: state.installed,
+    supported: state.supported,
+    skin: state.skin,
+    installSource: 'petdex-direct',
+    fallbackReason: cliError && cliError.code || null,
+    stdout: '',
+    stderr: trimCommandOutput(cliError && cliError.stderr)
+  };
+}
+
 async function installGalleryPet(body, options = {}) {
   const slug = safePetSlug(body && body.slug);
   if (!slug) {
@@ -982,7 +1194,15 @@ async function installGalleryPet(body, options = {}) {
   if (body && body.force === true) args.push('--force');
   if (body && body.select === true) args.push('--select');
   args.push(slug);
-  const command = await runHermesPetsCommand(options, args);
+  let command;
+  try {
+    command = await runHermesPetsCommand(options, args);
+  } catch (error) {
+    if (shouldUseDirectPetdexInstall(error)) {
+      return installPetdexPetDirect(slug, body, options, error);
+    }
+    throw error;
+  }
   const state = await installedPetState(slug, options);
   return {
     ok: state.installed,
@@ -990,6 +1210,7 @@ async function installGalleryPet(body, options = {}) {
     installed: state.installed,
     supported: state.supported,
     skin: state.skin,
+    installSource: 'hermes-cli',
     stdout: command && command.stdout || '',
     stderr: command && command.stderr || ''
   };
