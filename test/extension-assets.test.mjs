@@ -672,6 +672,32 @@ test('extension metadata follows the PR10 extension entry shape', async () => {
     origin: 'http://127.0.0.1:17787',
     health_path: '/health'
   });
+  assert.equal(entry.management.version, 1);
+  assert.deepEqual(entry.management.install, {
+    kind: 'external_url',
+    label: 'Install Desktop Companion',
+    url: 'https://github.com/franksong2702/hermes-webui-desktop-companion#first-time-setup',
+    description: 'Install or clone the trusted local Desktop Companion runtime.'
+  });
+  assert.deepEqual(entry.management.start, {
+    kind: 'command_hint',
+    label: 'Start Desktop Companion',
+    command: 'npm run start:pet',
+    description: 'Starts the local loopback sidecar and native Desktop Pet host from this repository.'
+  });
+  assert.deepEqual(entry.management.manager, {
+    kind: 'sidecar_path',
+    label: 'Open Pet Gallery',
+    path: '/pet/gallery',
+    requires: ['loopback-sidecar'],
+    description: 'Opens the sidecar-hosted Pet Gallery / Manager when the local runtime is running.'
+  });
+  assert.deepEqual(entry.management.health, { path: '/health' });
+  assert.deepEqual(entry.management.actions.map((action) => action.id), [
+    'install_desktop_companion',
+    'start_desktop_companion',
+    'open_pet_gallery'
+  ]);
   assert.deepEqual(entry.lifecycle, {
     webui_restart_required: false,
     sidecar_start_required: true,

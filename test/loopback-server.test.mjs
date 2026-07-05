@@ -65,6 +65,32 @@ test('health returns service metadata', async () => {
   assert.equal(body.runtime.bridge, 'waiting');
   assert.equal(body.runtime.last_seen_at, null);
   assert.equal(body.runtime.webui_origin, null);
+  assert.equal(body.management.version, 1);
+  assert.deepEqual(body.management.install, {
+    kind: 'external_url',
+    label: 'Install Desktop Companion',
+    url: 'https://github.com/franksong2702/hermes-webui-desktop-companion#first-time-setup',
+    description: 'Install or clone the trusted local Desktop Companion runtime.'
+  });
+  assert.deepEqual(body.management.start, {
+    kind: 'command_hint',
+    label: 'Start Desktop Companion',
+    command: 'npm run start:pet',
+    description: 'Starts the local loopback sidecar and native Desktop Pet host from this repository.'
+  });
+  assert.deepEqual(body.management.manager, {
+    kind: 'sidecar_path',
+    label: 'Open Pet Gallery',
+    path: '/pet/gallery',
+    requires: ['loopback-sidecar'],
+    description: 'Opens the sidecar-hosted Pet Gallery / Manager when the local runtime is running.'
+  });
+  assert.deepEqual(body.management.health, { path: '/health' });
+  assert.deepEqual(body.management.actions.map((action) => action.id), [
+    'install_desktop_companion',
+    'start_desktop_companion',
+    'open_pet_gallery'
+  ]);
 });
 
 test('pet capabilities exposes pet pack contract metadata', async () => {

@@ -23,6 +23,49 @@ Returns:
     "type": "loopback",
     "health_path": "/health"
   },
+  "management": {
+    "version": 1,
+    "install": {
+      "kind": "external_url",
+      "label": "Install Desktop Companion",
+      "url": "https://github.com/franksong2702/hermes-webui-desktop-companion#first-time-setup"
+    },
+    "start": {
+      "kind": "command_hint",
+      "label": "Start Desktop Companion",
+      "command": "npm run start:pet"
+    },
+    "manager": {
+      "kind": "sidecar_path",
+      "label": "Open Pet Gallery",
+      "path": "/pet/gallery",
+      "requires": ["loopback-sidecar"]
+    },
+    "health": {
+      "path": "/health"
+    },
+    "actions": [
+      {
+        "id": "install_desktop_companion",
+        "kind": "external_url",
+        "label": "Install Desktop Companion",
+        "url": "https://github.com/franksong2702/hermes-webui-desktop-companion#first-time-setup"
+      },
+      {
+        "id": "start_desktop_companion",
+        "kind": "command_hint",
+        "label": "Start Desktop Companion",
+        "command": "npm run start:pet"
+      },
+      {
+        "id": "open_pet_gallery",
+        "kind": "sidecar_path",
+        "label": "Open Pet Gallery",
+        "path": "/pet/gallery",
+        "requires": ["loopback-sidecar"]
+      }
+    ]
+  },
   "runtime": {
     "sidecar": "running",
     "native_host": "running",
@@ -44,6 +87,13 @@ sidecar/native extensions. `sidecar` reports the loopback process state,
 `not_registered`), and `bridge` reports whether the WebUI adapter has sent a
 fresh snapshot (`connected`, `waiting`, `stale`, or `unloaded`). `last_seen_at`
 is the latest WebUI snapshot timestamp in Unix seconds when available.
+
+The optional `management` object describes user-facing management affordances
+for WebUI extension settings. `install` is an external trusted-local setup link,
+`start` is a command hint for the local checkout, and `manager` is a sidecar
+path that can be opened only after the loopback runtime is already running.
+These fields are descriptive contract metadata; they do not grant WebUI
+permission to silently install native code or launch a process.
 
 ## `POST /api/webui/snapshot`
 

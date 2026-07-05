@@ -131,6 +131,17 @@ Hermes WebUI can use this field for extension diagnostics, sidecar health
 display, and any consent-gated fixed sidecar proxy surface it supports. It still
 does not imply auto-install, auto-start, or native host permission.
 
+`extension/extension.json` also declares a small management contract for future
+extension settings UI:
+
+- install points to this repo's first-time setup instructions
+- start shows `npm run start:pet` as the local runtime command
+- manager opens the sidecar-hosted Pet Gallery at `/pet/gallery` after the
+  sidecar is running
+
+The same management contract is returned from `/health` for diagnostics. It is
+metadata for user-visible actions, not a silent native installer.
+
 It should stay small, auditable, additive, and reversible. It must not render
 browser UI, replace WebUI containers, or depend on private DOM structure.
 
@@ -245,6 +256,9 @@ expected flow is:
 
 The Gallery entry intentionally does not install or auto-start the native
 sidecar/Tauri host. Those remain local Desktop Companion runtime processes.
+Future WebUI extension settings can read the manifest `management` field or the
+sidecar `/health` response to show install, start, health, and Pet Gallery
+actions in one place.
 
 Older WebUI builds without `HERMES_WEBUI_EXTENSION_MANIFEST` can still load the
 adapter with explicit asset lists:

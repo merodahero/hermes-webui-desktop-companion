@@ -90,6 +90,49 @@ started, and native-host autostart remains a Desktop Companion preference rather
 than WebUI core state. Today's manual env-var setup may still involve restarting
 WebUI so it rereads its configured extension manifest.
 
+The source metadata may also include a management contract:
+
+```json
+{
+  "management": {
+    "version": 1,
+    "install": {
+      "kind": "external_url",
+      "url": "https://github.com/franksong2702/hermes-webui-desktop-companion#first-time-setup"
+    },
+    "start": {
+      "kind": "command_hint",
+      "command": "npm run start:pet"
+    },
+    "manager": {
+      "kind": "sidecar_path",
+      "path": "/pet/gallery"
+    },
+    "health": {
+      "path": "/health"
+    },
+    "actions": [
+      {
+        "id": "install_desktop_companion",
+        "kind": "external_url"
+      },
+      {
+        "id": "start_desktop_companion",
+        "kind": "command_hint"
+      },
+      {
+        "id": "open_pet_gallery",
+        "kind": "sidecar_path"
+      }
+    ]
+  }
+}
+```
+
+This contract gives WebUI a place to render explicit install/start/manage
+actions. It is not permission to silently install native code or launch a
+process.
+
 ## Install model
 
 1. Install or clone this repository locally.
@@ -146,6 +189,8 @@ upstream direction:
 - Sidecar manifest metadata: proposed contract for Desktop Companion-style
   loopback helpers.
 - Extension settings/status panel: future place to show sidecar health.
+- Extension management actions: future place to render the manifest `management`
+  install/start/Pet Gallery actions.
 - Subprocess-isolated plugin backend API: future replacement or formalization
   point for the local sidecar.
 

@@ -10,6 +10,7 @@ export const SERVICE_NAME = 'hermes-webui-desktop-companion';
 export const DISPLAY_NAME = 'Hermes WebUI Desktop Companion';
 export const VERSION = '0.1.0';
 export const PET_PACK_CONTRACT_VERSION = 1;
+export const MANAGEMENT_CONTRACT_VERSION = 1;
 const PROJECT_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const DESKTOP_WEB_ROOT = path.join(PROJECT_ROOT, 'desktop-pet', 'web');
 const EXTENSION_ROOT = path.join(PROJECT_ROOT, 'extension');
@@ -27,6 +28,9 @@ const PET_FRAMES_PER_STATE = 6;
 const PET_GALLERY_MANIFEST_URL = 'https://petdex.dev/api/manifest';
 const PET_GALLERY_SEARCH_URL = 'https://petdex.dev/api/pets/search';
 const PET_GALLERY_INSTALL_URL = 'https://petdex.dev/api/install-pet';
+const DESKTOP_COMPANION_INSTALL_URL = 'https://github.com/franksong2702/hermes-webui-desktop-companion#first-time-setup';
+const DESKTOP_COMPANION_START_COMMAND = 'npm run start:pet';
+const DESKTOP_COMPANION_MANAGER_PATH = '/pet/gallery';
 const PET_GALLERY_CACHE_MS = 5 * 60 * 1000;
 const PET_GALLERY_DEFAULT_LIMIT = 12;
 const PET_GALLERY_MAX_LIMIT = 48;
@@ -1393,6 +1397,55 @@ export function createServer(options = {}) {
     };
   }
 
+  function managementContract() {
+    return {
+      version: MANAGEMENT_CONTRACT_VERSION,
+      install: {
+        kind: 'external_url',
+        label: 'Install Desktop Companion',
+        url: DESKTOP_COMPANION_INSTALL_URL,
+        description: 'Install or clone the trusted local Desktop Companion runtime.'
+      },
+      start: {
+        kind: 'command_hint',
+        label: 'Start Desktop Companion',
+        command: DESKTOP_COMPANION_START_COMMAND,
+        description: 'Starts the local loopback sidecar and native Desktop Pet host from this repository.'
+      },
+      manager: {
+        kind: 'sidecar_path',
+        label: 'Open Pet Gallery',
+        path: DESKTOP_COMPANION_MANAGER_PATH,
+        requires: ['loopback-sidecar'],
+        description: 'Opens the sidecar-hosted Pet Gallery / Manager when the local runtime is running.'
+      },
+      health: {
+        path: '/health'
+      },
+      actions: [
+        {
+          id: 'install_desktop_companion',
+          kind: 'external_url',
+          label: 'Install Desktop Companion',
+          url: DESKTOP_COMPANION_INSTALL_URL
+        },
+        {
+          id: 'start_desktop_companion',
+          kind: 'command_hint',
+          label: 'Start Desktop Companion',
+          command: DESKTOP_COMPANION_START_COMMAND
+        },
+        {
+          id: 'open_pet_gallery',
+          kind: 'sidecar_path',
+          label: 'Open Pet Gallery',
+          path: DESKTOP_COMPANION_MANAGER_PATH,
+          requires: ['loopback-sidecar']
+        }
+      ]
+    };
+  }
+
   function trimNavigationCommands(now = Date.now()) {
     const cutoff = now - PET_NAVIGATION_TTL_MS;
     navigationCommands = navigationCommands
@@ -1624,6 +1677,7 @@ export function createServer(options = {}) {
             type: 'loopback',
             health_path: '/health'
           },
+          management: managementContract(),
           runtime: runtimeStatus()
         }, headers);
         return;

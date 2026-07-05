@@ -59,7 +59,9 @@ loopback protocol.
 
 The Gallery entry is not a native-host installer or autostart mechanism. It
 installs the WebUI bridge; this repo still owns the local sidecar and native pet
-host.
+host. `extension/extension.json` and `/health` expose descriptive management
+metadata so WebUI can eventually show install, start, health, and Pet Gallery
+actions without treating the extension install itself as native app install.
 
 For older WebUI builds without `HERMES_WEBUI_EXTENSION_MANIFEST`, fall back to
 the explicit URL-list configuration:
