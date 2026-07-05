@@ -73,17 +73,19 @@ test('health returns service metadata', async () => {
     description: 'Install or clone the trusted local Desktop Companion runtime.'
   });
   assert.deepEqual(body.management.start, {
-    kind: 'command_hint',
+    kind: 'deep_link',
     label: 'Start Desktop Companion',
-    command: 'npm run start:pet',
-    description: 'Starts the local loopback sidecar and native Desktop Pet host from this repository.'
+    uri: 'hermes-desktop-companion://start',
+    fallback_command: 'npm run start:pet',
+    description: 'Starts the installed Desktop Companion app through the operating system deep-link handler.'
   });
   assert.deepEqual(body.management.manager, {
-    kind: 'sidecar_path',
+    kind: 'deep_link',
     label: 'Open Pet Gallery',
+    uri: 'hermes-desktop-companion://gallery',
     path: '/pet/gallery',
-    requires: ['loopback-sidecar'],
-    description: 'Opens the sidecar-hosted Pet Gallery / Manager when the local runtime is running.'
+    requires: ['native-host'],
+    description: 'Starts Desktop Companion if needed and opens the Pet Gallery / Manager.'
   });
   assert.deepEqual(body.management.health, { path: '/health' });
   assert.deepEqual(body.management.actions.map((action) => action.id), [
@@ -91,6 +93,8 @@ test('health returns service metadata', async () => {
     'start_desktop_companion',
     'open_pet_gallery'
   ]);
+  assert.equal(body.management.actions[1].uri, 'hermes-desktop-companion://start');
+  assert.equal(body.management.actions[2].uri, 'hermes-desktop-companion://gallery');
 });
 
 test('pet capabilities exposes pet pack contract metadata', async () => {

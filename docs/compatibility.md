@@ -34,6 +34,11 @@ WebUI page when a global is absent or changes shape.
   - `type: "loopback"`
   - `origin: "http://127.0.0.1:17787"`
   - `health_path: "/health"`
+- Entry and health `management` metadata:
+  - `install.kind: "external_url"`
+  - `start.kind: "deep_link"` with `hermes-desktop-companion://start`
+  - `manager.kind: "deep_link"` with `hermes-desktop-companion://gallery`
+  - `fallback_command: "npm run start:pet"` for local development docs
 
 Current Hermes WebUI builds can surface sanitized sidecar diagnostics, perform
 browser-side health checks, and expose consent-gated fixed sidecar proxy paths
@@ -56,6 +61,17 @@ place to attach.
   "sidecar": {
     "type": "loopback",
     "health_path": "/health"
+  },
+  "management": {
+    "version": 1,
+    "start": {
+      "kind": "deep_link",
+      "uri": "hermes-desktop-companion://start"
+    },
+    "manager": {
+      "kind": "deep_link",
+      "uri": "hermes-desktop-companion://gallery"
+    }
   }
 }
 ```
@@ -68,6 +84,7 @@ place to attach.
 - confirm `extension/extension.json` parses as JSON and matches the PR #10
   entry shape
 - confirm `/health` returns `status: "ok"`
+- confirm the installed macOS app handles `hermes-desktop-companion://gallery`
 - confirm WebUI loads the adapter from Gallery install or the manifest bundle
 - confirm the pet remains usable when the sidecar is offline
 - confirm install, disable, and uninstall steps are documented

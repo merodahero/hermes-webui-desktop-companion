@@ -101,11 +101,13 @@ The source metadata may also include a management contract:
       "url": "https://github.com/franksong2702/hermes-webui-desktop-companion#first-time-setup"
     },
     "start": {
-      "kind": "command_hint",
-      "command": "npm run start:pet"
+      "kind": "deep_link",
+      "uri": "hermes-desktop-companion://start",
+      "fallback_command": "npm run start:pet"
     },
     "manager": {
-      "kind": "sidecar_path",
+      "kind": "deep_link",
+      "uri": "hermes-desktop-companion://gallery",
       "path": "/pet/gallery"
     },
     "health": {
@@ -118,11 +120,11 @@ The source metadata may also include a management contract:
       },
       {
         "id": "start_desktop_companion",
-        "kind": "command_hint"
+        "kind": "deep_link"
       },
       {
         "id": "open_pet_gallery",
-        "kind": "sidecar_path"
+        "kind": "deep_link"
       }
     ]
   }
@@ -131,7 +133,8 @@ The source metadata may also include a management contract:
 
 This contract gives WebUI a place to render explicit install/start/manage
 actions. It is not permission to silently install native code or launch a
-process.
+process. The deep-link actions require an installed native app; the fallback
+command is documentation for local development.
 
 ## Install model
 
@@ -155,6 +158,21 @@ process.
    ```bash
    npm run desktop:dev
    ```
+
+For installed-app validation on macOS, build the app and DMG with:
+
+```bash
+npm run desktop:package
+```
+
+Install the generated app bundle, then trigger:
+
+```bash
+open "hermes-desktop-companion://gallery"
+```
+
+macOS deep links are registered by the installed app bundle, not by the WebUI
+Gallery entry.
 
 ## Trust model
 

@@ -135,9 +135,10 @@ does not imply auto-install, auto-start, or native host permission.
 extension settings UI:
 
 - install points to this repo's first-time setup instructions
-- start shows `npm run start:pet` as the local runtime command
-- manager opens the sidecar-hosted Pet Gallery at `/pet/gallery` after the
-  sidecar is running
+- start opens `hermes-desktop-companion://start` and keeps `npm run start:pet`
+  as the local development fallback
+- manager opens `hermes-desktop-companion://gallery`, which starts the native
+  host if needed and then opens the sidecar-hosted Pet Gallery
 
 The same management contract is returned from `/health` for diagnostics. It is
 metadata for user-visible actions, not a silent native installer.
@@ -209,6 +210,39 @@ or press `Ctrl-C` in the terminal running `npm run start:pet`.
 If Hermes WebUI shows Desktop Companion as installed but the pet does not react,
 check that `npm run start:pet` is still running and then reload Hermes WebUI.
 
+#### Installed app deep links
+
+The native app registers the `hermes-desktop-companion://` scheme when it is
+installed as a macOS app bundle. Supported links are:
+
+- `hermes-desktop-companion://start` starts or focuses Desktop Companion
+- `hermes-desktop-companion://gallery` starts Desktop Companion if needed and
+  opens Pet Gallery / Manager
+
+The app first checks the loopback sidecar at `127.0.0.1:17787`. If it is not
+running, it starts the bundled sidecar resources or a local repo checkout
+pointed to by `HERMES_DESKTOP_COMPANION_REPO`.
+
+#### macOS package
+
+Build a local macOS package with:
+
+```bash
+npm run desktop:package
+```
+
+The Tauri build produces a `.app` bundle and `.dmg` under
+`desktop-pet/src-tauri/target/release/bundle/`. For macOS deep-link testing,
+copy the `.app` to `/Applications`, then run:
+
+```bash
+open "hermes-desktop-companion://gallery"
+```
+
+Unsigned local builds are for development validation. Public distribution still
+needs Developer ID signing and notarization before users should treat the DMG as
+a trusted release artifact.
+
 ### Manual extension mode
 
 For older WebUI builds or local extension-asset development, print the Hermes
@@ -251,8 +285,11 @@ Desktop Companion is published in the Hermes WebUI extension registry. The
 expected flow is:
 
 1. Install Desktop Companion from Settings -> Extensions -> Gallery.
-2. Start the local companion runtime from this repo with `npm run start:pet`.
-3. Reload WebUI so the browser adapter can post snapshots to the sidecar.
+2. Install the macOS app bundle or start the local companion runtime from this
+   repo with `npm run start:pet`.
+3. Use `hermes-desktop-companion://start` or
+   `hermes-desktop-companion://gallery` to start/focus the native host.
+4. Reload WebUI so the browser adapter can post snapshots to the sidecar.
 
 The Gallery entry intentionally does not install or auto-start the native
 sidecar/Tauri host. Those remain local Desktop Companion runtime processes.
@@ -366,6 +403,9 @@ npm run dev
 The root package currently has no runtime npm dependencies. The native Tauri
 shell manages its own dependencies under `desktop-pet/`, and
 `npm run start:pet` installs them when missing.
+
+For packaging work, `npm run desktop:package` delegates to Tauri and builds the
+configured macOS `.app` and `.dmg` targets.
 
 ## Extension-library fit
 

@@ -30,6 +30,8 @@ const PET_GALLERY_SEARCH_URL = 'https://petdex.dev/api/pets/search';
 const PET_GALLERY_INSTALL_URL = 'https://petdex.dev/api/install-pet';
 const DESKTOP_COMPANION_INSTALL_URL = 'https://github.com/franksong2702/hermes-webui-desktop-companion#first-time-setup';
 const DESKTOP_COMPANION_START_COMMAND = 'npm run start:pet';
+const DESKTOP_COMPANION_START_URI = 'hermes-desktop-companion://start';
+const DESKTOP_COMPANION_MANAGER_URI = 'hermes-desktop-companion://gallery';
 const DESKTOP_COMPANION_MANAGER_PATH = '/pet/gallery';
 const PET_GALLERY_CACHE_MS = 5 * 60 * 1000;
 const PET_GALLERY_DEFAULT_LIMIT = 12;
@@ -1407,17 +1409,19 @@ export function createServer(options = {}) {
         description: 'Install or clone the trusted local Desktop Companion runtime.'
       },
       start: {
-        kind: 'command_hint',
+        kind: 'deep_link',
         label: 'Start Desktop Companion',
-        command: DESKTOP_COMPANION_START_COMMAND,
-        description: 'Starts the local loopback sidecar and native Desktop Pet host from this repository.'
+        uri: DESKTOP_COMPANION_START_URI,
+        fallback_command: DESKTOP_COMPANION_START_COMMAND,
+        description: 'Starts the installed Desktop Companion app through the operating system deep-link handler.'
       },
       manager: {
-        kind: 'sidecar_path',
+        kind: 'deep_link',
         label: 'Open Pet Gallery',
+        uri: DESKTOP_COMPANION_MANAGER_URI,
         path: DESKTOP_COMPANION_MANAGER_PATH,
-        requires: ['loopback-sidecar'],
-        description: 'Opens the sidecar-hosted Pet Gallery / Manager when the local runtime is running.'
+        requires: ['native-host'],
+        description: 'Starts Desktop Companion if needed and opens the Pet Gallery / Manager.'
       },
       health: {
         path: '/health'
@@ -1431,16 +1435,18 @@ export function createServer(options = {}) {
         },
         {
           id: 'start_desktop_companion',
-          kind: 'command_hint',
+          kind: 'deep_link',
           label: 'Start Desktop Companion',
-          command: DESKTOP_COMPANION_START_COMMAND
+          uri: DESKTOP_COMPANION_START_URI,
+          fallback_command: DESKTOP_COMPANION_START_COMMAND
         },
         {
           id: 'open_pet_gallery',
-          kind: 'sidecar_path',
+          kind: 'deep_link',
           label: 'Open Pet Gallery',
+          uri: DESKTOP_COMPANION_MANAGER_URI,
           path: DESKTOP_COMPANION_MANAGER_PATH,
-          requires: ['loopback-sidecar']
+          requires: ['native-host']
         }
       ]
     };

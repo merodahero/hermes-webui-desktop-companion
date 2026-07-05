@@ -5,7 +5,9 @@
   "type": "module",
   "scripts": {
     "dev": "tauri dev",
-    "build": "tauri build"
+    "build": "tauri build",
+    "bundle:app": "tauri build -- --bundles app",
+    "bundle:dmg": "tauri build -- --bundles dmg"
   },
   "devDependencies": {
     "@tauri-apps/cli": "^2.0.0"

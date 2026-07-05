@@ -43,8 +43,22 @@
       }
     ]
   },
+  "plugins": {
+    "deep-link": {
+      "desktop": {
+        "schemes": ["hermes-desktop-companion"]
+      }
+    }
+  },
   "bundle": {
     "active": true,
+    "category": "Utility",
+    "resources": {
+      "../../src/": "companion/src",
+      "../../extension/": "companion/extension",
+      "../web/": "companion/desktop-pet/web",
+      "../../package.json": "companion/package.json"
+    },
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",
@@ -52,6 +66,6 @@
       "icons/icon.icns",
       "icons/icon.ico"
     ],
-    "targets": ["app"]
+    "targets": ["app", "dmg"]
   }
 }

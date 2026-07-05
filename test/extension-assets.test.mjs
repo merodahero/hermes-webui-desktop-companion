@@ -604,6 +604,8 @@ test('desktop pet keeps the migrated PR2916 bubble window choreography', async (
   const bubblesText = await readFile(new URL('../desktop-pet/web/bubbles.js', import.meta.url), 'utf8');
   const cssText = await readFile(new URL('../desktop-pet/web/pet.css', import.meta.url), 'utf8');
   const tauriMainText = await readFile(new URL('../desktop-pet/src-tauri/src/main.rs', import.meta.url), 'utf8');
+  const tauriConfigText = await readFile(new URL('../desktop-pet/src-tauri/tauri.conf.json', import.meta.url), 'utf8');
+  const tauriConfig = JSON.parse(tauriConfigText);
 
   assert.match(petText, /COLLAPSED_KEY='hermes-pet-collapsed'/);
   assert.match(petText, /COLLAPSE_EXPLICIT_KEY='hermes-pet-collapsed-explicit'/);
@@ -632,6 +634,19 @@ test('desktop pet keeps the migrated PR2916 bubble window choreography', async (
   assert.match(tauriMainText, /fn restore_pet_window_layers_during_startup/);
   assert.match(tauriMainText, /Duration::from_millis\(1200\)/);
   assert.match(tauriMainText, /restore_pet_window_layers_during_startup\(app\.handle\(\)\.clone\(\)\)/);
+  assert.match(tauriMainText, /COMPANION_DEEP_LINK_SCHEME: &str = "hermes-desktop-companion"/);
+  assert.match(tauriMainText, /tauri_plugin_single_instance::init/);
+  assert.match(tauriMainText, /tauri_plugin_deep_link::init\(\)/);
+  assert.match(tauriMainText, /fn handle_companion_deep_link/);
+  assert.match(tauriMainText, /ensure_loopback_sidecar/);
+  assert.deepEqual(tauriConfig.plugins['deep-link'].desktop.schemes, ['hermes-desktop-companion']);
+  assert.deepEqual(tauriConfig.bundle.targets, ['app', 'dmg']);
+  assert.deepEqual(tauriConfig.bundle.resources, {
+    '../../src/': 'companion/src',
+    '../../extension/': 'companion/extension',
+    '../web/': 'companion/desktop-pet/web',
+    '../../package.json': 'companion/package.json'
+  });
 });
 
 test('extension manifest bundles adapter assets', async () => {
@@ -680,17 +695,19 @@ test('extension metadata follows the PR10 extension entry shape', async () => {
     description: 'Install or clone the trusted local Desktop Companion runtime.'
   });
   assert.deepEqual(entry.management.start, {
-    kind: 'command_hint',
+    kind: 'deep_link',
     label: 'Start Desktop Companion',
-    command: 'npm run start:pet',
-    description: 'Starts the local loopback sidecar and native Desktop Pet host from this repository.'
+    uri: 'hermes-desktop-companion://start',
+    fallback_command: 'npm run start:pet',
+    description: 'Starts the installed Desktop Companion app through the operating system deep-link handler.'
   });
   assert.deepEqual(entry.management.manager, {
-    kind: 'sidecar_path',
+    kind: 'deep_link',
     label: 'Open Pet Gallery',
+    uri: 'hermes-desktop-companion://gallery',
     path: '/pet/gallery',
-    requires: ['loopback-sidecar'],
-    description: 'Opens the sidecar-hosted Pet Gallery / Manager when the local runtime is running.'
+    requires: ['native-host'],
+    description: 'Starts Desktop Companion if needed and opens the Pet Gallery / Manager.'
   });
   assert.deepEqual(entry.management.health, { path: '/health' });
   assert.deepEqual(entry.management.actions.map((action) => action.id), [
@@ -698,6 +715,8 @@ test('extension metadata follows the PR10 extension entry shape', async () => {
     'start_desktop_companion',
     'open_pet_gallery'
   ]);
+  assert.equal(entry.management.actions[1].uri, 'hermes-desktop-companion://start');
+  assert.equal(entry.management.actions[2].uri, 'hermes-desktop-companion://gallery');
   assert.deepEqual(entry.lifecycle, {
     webui_restart_required: false,
     sidecar_start_required: true,

@@ -7,6 +7,7 @@ const startPetScript = readFileSync(new URL('../scripts/start-pet.mjs', import.m
 
 test('start:pet launches the sidecar and native desktop pet', () => {
   assert.equal(packageJson.scripts['start:pet'], 'node scripts/start-pet.mjs');
+  assert.equal(packageJson.scripts['desktop:package'], 'npm --prefix desktop-pet run build');
   assert.match(startPetScript, /start\('sidecar', \['run', 'dev'\]\)/);
   assert.match(startPetScript, /start\('desktop pet', \['run', 'desktop:dev'\]/);
   assert.match(startPetScript, /HERMES_DESKTOP_COMPANION_BASE/);

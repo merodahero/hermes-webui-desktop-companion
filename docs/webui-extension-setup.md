@@ -63,6 +63,18 @@ host. `extension/extension.json` and `/health` expose descriptive management
 metadata so WebUI can eventually show install, start, health, and Pet Gallery
 actions without treating the extension install itself as native app install.
 
+Installed macOS builds also register:
+
+```text
+hermes-desktop-companion://start
+hermes-desktop-companion://gallery
+```
+
+The `gallery` link starts or focuses Desktop Companion and opens Pet Gallery /
+Manager. Build the local `.app` and `.dmg` with `npm run desktop:package`; for
+macOS deep-link testing, install the app bundle before running `open
+"hermes-desktop-companion://gallery"`.
+
 For older WebUI builds without `HERMES_WEBUI_EXTENSION_MANIFEST`, fall back to
 the explicit URL-list configuration:
 

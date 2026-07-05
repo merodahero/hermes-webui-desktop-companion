@@ -1,15 +1,23 @@
 use serde::{Deserialize, Serialize};
+use std::env;
+use std::fs;
+use std::net::{SocketAddr, TcpStream};
+use std::path::{Path, PathBuf};
 use std::process;
-use std::process::Command;
+use std::process::{Child, Command, Stdio};
 use std::sync::{atomic::AtomicBool, atomic::Ordering, Arc, Mutex};
 use std::thread;
 use std::time::Duration;
 use tauri::menu::{MenuBuilder, SubmenuBuilder};
+use tauri::path::BaseDirectory;
 use tauri::{Emitter, Listener, Manager, Url, WebviewWindow};
+use tauri_plugin_deep_link::DeepLinkExt;
 
 const CLOSE_PET_MENU_ID: &str = "close_pet";
 const MANAGE_PETS_MENU_ID: &str = "manage_pets";
 const RESTART_PET_MENU_ID: &str = "restart_pet";
+const COMPANION_DEEP_LINK_SCHEME: &str = "hermes-desktop-companion";
+const LOOPBACK_SIDECAR_ADDR: &str = "127.0.0.1:17787";
 const PET_NATIVE_RESTART_REQUESTED_EVENT: &str = "pet-native-restart-requested";
 const PET_CONTEXT_MENU_EVENT: &str = "pet-context-menu";
 const PET_SKIN_CHANGE_EVENT: &str = "pet-skin-change";
@@ -328,6 +336,209 @@ fn open_pet_gallery_manager(_app: &tauri::AppHandle) {
     open_external_url(&format!("{}/pet/gallery", base));
 }
 
+fn loopback_sidecar_running() -> bool {
+    let Ok(addr) = LOOPBACK_SIDECAR_ADDR.parse::<SocketAddr>() else {
+        return false;
+    };
+    TcpStream::connect_timeout(&addr, Duration::from_millis(180)).is_ok()
+}
+
+fn repo_root_from(start: &Path) -> Option<PathBuf> {
+    let mut current = if start.is_file() {
+        start.parent()?.to_path_buf()
+    } else {
+        start.to_path_buf()
+    };
+    loop {
+        let package_json = current.join("package.json");
+        let sidecar = current.join("src").join("loopback-server.mjs");
+        if package_json.is_file()
+            && sidecar.is_file()
+            && fs::read_to_string(&package_json)
+                .map(|text| text.contains("\"name\": \"hermes-webui-desktop-companion\""))
+                .unwrap_or(false)
+        {
+            return Some(current);
+        }
+        if !current.pop() {
+            return None;
+        }
+    }
+}
+
+fn env_path(name: &str) -> Option<PathBuf> {
+    env::var_os(name)
+        .map(PathBuf::from)
+        .filter(|path| !path.as_os_str().is_empty())
+}
+
+fn repo_sidecar_target() -> Option<(PathBuf, PathBuf)> {
+    if let Some(script) = env_path("HERMES_DESKTOP_COMPANION_SIDECAR_SCRIPT") {
+        if script.is_file() {
+            let root = script
+                .parent()
+                .and_then(Path::parent)
+                .map(Path::to_path_buf)
+                .unwrap_or_else(|| PathBuf::from("."));
+            return Some((script, root));
+        }
+    }
+    if let Some(root) =
+        env_path("HERMES_DESKTOP_COMPANION_REPO").and_then(|path| repo_root_from(&path))
+    {
+        return Some((root.join("src").join("loopback-server.mjs"), root));
+    }
+    for candidate in [env::current_dir().ok(), env::current_exe().ok()]
+        .into_iter()
+        .flatten()
+    {
+        if let Some(root) = repo_root_from(&candidate) {
+            return Some((root.join("src").join("loopback-server.mjs"), root));
+        }
+    }
+    None
+}
+
+fn bundled_sidecar_target(app: &tauri::AppHandle) -> Option<(PathBuf, PathBuf)> {
+    let script = app
+        .path()
+        .resolve("companion/src/loopback-server.mjs", BaseDirectory::Resource)
+        .ok()?;
+    if !script.is_file() {
+        return None;
+    }
+    let root = script.parent()?.parent()?.to_path_buf();
+    Some((script, root))
+}
+
+fn sidecar_launch_target(app: &tauri::AppHandle) -> Option<(PathBuf, PathBuf)> {
+    bundled_sidecar_target(app).or_else(repo_sidecar_target)
+}
+
+fn node_candidates() -> Vec<PathBuf> {
+    let mut candidates = Vec::new();
+    if let Some(path) = env_path("HERMES_DESKTOP_COMPANION_NODE") {
+        candidates.push(path);
+    }
+    candidates.extend([
+        PathBuf::from("node"),
+        PathBuf::from("/opt/homebrew/bin/node"),
+        PathBuf::from("/usr/local/bin/node"),
+    ]);
+    candidates
+}
+
+fn sidecar_child_still_running(sidecar_process: &Arc<Mutex<Option<Child>>>) -> bool {
+    let Ok(mut child_guard) = sidecar_process.lock() else {
+        return false;
+    };
+    let Some(child) = child_guard.as_mut() else {
+        return false;
+    };
+    match child.try_wait() {
+        Ok(None) => true,
+        Ok(Some(_)) | Err(_) => {
+            *child_guard = None;
+            false
+        }
+    }
+}
+
+fn wait_for_loopback_sidecar(timeout: Duration) -> bool {
+    let deadline = std::time::Instant::now() + timeout;
+    while std::time::Instant::now() < deadline {
+        if loopback_sidecar_running() {
+            return true;
+        }
+        thread::sleep(Duration::from_millis(80));
+    }
+    loopback_sidecar_running()
+}
+
+fn ensure_loopback_sidecar(app: &tauri::AppHandle, sidecar_process: &Arc<Mutex<Option<Child>>>) {
+    if loopback_sidecar_running() || sidecar_child_still_running(sidecar_process) {
+        return;
+    }
+    let Some((script, root)) = sidecar_launch_target(app) else {
+        eprintln!("[desktop-companion] sidecar script was not found");
+        return;
+    };
+    for node in node_candidates() {
+        let spawn_result = Command::new(&node)
+            .arg(&script)
+            .current_dir(&root)
+            .env(
+                "HERMES_DESKTOP_COMPANION_BASE",
+                format!("http://{LOOPBACK_SIDECAR_ADDR}"),
+            )
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .spawn();
+        match spawn_result {
+            Ok(child) => {
+                if let Ok(mut child_guard) = sidecar_process.lock() {
+                    *child_guard = Some(child);
+                }
+                let _ = wait_for_loopback_sidecar(Duration::from_secs(3));
+                return;
+            }
+            Err(error) => {
+                eprintln!(
+                    "[desktop-companion] failed to start sidecar with {}: {error}",
+                    node.display()
+                );
+            }
+        }
+    }
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum CompanionDeepLinkAction {
+    Start,
+    Gallery,
+}
+
+fn companion_deep_link_action(raw: &str) -> Option<CompanionDeepLinkAction> {
+    let url = Url::parse(raw).ok()?;
+    if url.scheme() != COMPANION_DEEP_LINK_SCHEME {
+        return None;
+    }
+    let host = url.host_str().unwrap_or("").trim_matches('/');
+    let path = url.path().trim_matches('/');
+    let action = if !host.is_empty() {
+        host
+    } else if !path.is_empty() {
+        path.split('/').next().unwrap_or("")
+    } else {
+        "start"
+    };
+    match action {
+        "" | "start" => Some(CompanionDeepLinkAction::Start),
+        "gallery" | "manager" | "pets" => Some(CompanionDeepLinkAction::Gallery),
+        _ => None,
+    }
+}
+
+fn handle_companion_deep_link(
+    app: &tauri::AppHandle,
+    sidecar_process: &Arc<Mutex<Option<Child>>>,
+    raw: &str,
+) {
+    let Some(action) = companion_deep_link_action(raw) else {
+        return;
+    };
+    ensure_loopback_sidecar(app, sidecar_process);
+    restore_pet_window_layers(app);
+    if let Some(window) = app.get_webview_window("pet") {
+        let _ = window.show();
+        let _ = window.set_focus();
+    }
+    if action == CompanionDeepLinkAction::Gallery {
+        open_pet_gallery_manager(app);
+    }
+}
+
 fn apply_bubble_visibility(
     app: &tauri::AppHandle,
     visible_state: &Arc<Mutex<bool>>,
@@ -430,8 +641,28 @@ fn main() {
     let restart_requested_for_menu = restart_requested.clone();
     let bubble_visible_state = Arc::new(Mutex::new(false));
     let bubble_visible_state_for_setup = bubble_visible_state.clone();
+    let sidecar_process: Arc<Mutex<Option<Child>>> = Arc::new(Mutex::new(None));
+    let sidecar_for_setup = sidecar_process.clone();
+    let sidecar_for_single_instance = sidecar_process.clone();
     tauri::Builder::default()
+        .plugin(tauri_plugin_single_instance::init(
+            move |app, argv, _cwd| {
+                let handle = app.clone();
+                for raw in argv {
+                    if companion_deep_link_action(&raw).is_none() {
+                        continue;
+                    }
+                    let deep_link_handle = handle.clone();
+                    let deep_link_sidecar = sidecar_for_single_instance.clone();
+                    let _ = handle.run_on_main_thread(move || {
+                        handle_companion_deep_link(&deep_link_handle, &deep_link_sidecar, &raw);
+                    });
+                }
+            },
+        ))
+        .plugin(tauri_plugin_deep_link::init())
         .setup(move |app| {
+            ensure_loopback_sidecar(app.handle(), &sidecar_for_setup);
             navigate_window_to_webui(app, "pet", "/pet");
             navigate_window_to_webui(app, "pet_bubbles", "/pet/bubbles");
             if let Some(pet_window) = app.get_webview_window("pet") {
@@ -455,6 +686,24 @@ fn main() {
                 attach_bubble_child_window(&pet_window, &bubble_window);
             }
             restore_pet_window_layers_during_startup(app.handle().clone());
+            if let Ok(Some(urls)) = app.deep_link().get_current() {
+                for url in urls {
+                    handle_companion_deep_link(app.handle(), &sidecar_for_setup, url.as_str());
+                }
+            }
+            let deep_link_handle = app.handle().clone();
+            let deep_link_sidecar = sidecar_for_setup.clone();
+            app.deep_link().on_open_url(move |event| {
+                let urls: Vec<String> = event.urls().iter().map(ToString::to_string).collect();
+                for raw in urls {
+                    let handle = deep_link_handle.clone();
+                    let sidecar = deep_link_sidecar.clone();
+                    let runner = handle.clone();
+                    let _ = runner.run_on_main_thread(move || {
+                        handle_companion_deep_link(&handle, &sidecar, &raw);
+                    });
+                }
+            });
             let raise_handle = app.handle().clone();
             let raise_visible_state = bubble_visible_state_for_setup.clone();
             app.listen(PET_RAISE_REQUESTED_EVENT, move |event| {

@@ -29,19 +29,21 @@
       "description": "Install or clone the trusted local Desktop Companion runtime."
     },
     "start": {
-      "kind": "command_hint",
+      "kind": "deep_link",
       "label": "Start Desktop Companion",
-      "command": "npm run start:pet",
-      "description": "Starts the local loopback sidecar and native Desktop Pet host from this repository."
+      "uri": "hermes-desktop-companion://start",
+      "fallback_command": "npm run start:pet",
+      "description": "Starts the installed Desktop Companion app through the operating system deep-link handler."
     },
     "manager": {
-      "kind": "sidecar_path",
+      "kind": "deep_link",
       "label": "Open Pet Gallery",
+      "uri": "hermes-desktop-companion://gallery",
       "path": "/pet/gallery",
       "requires": [
-        "loopback-sidecar"
+        "native-host"
       ],
-      "description": "Opens the sidecar-hosted Pet Gallery / Manager when the local runtime is running."
+      "description": "Starts Desktop Companion if needed and opens the Pet Gallery / Manager."
     },
     "health": {
       "path": "/health"
@@ -55,17 +57,19 @@
       },
       {
         "id": "start_desktop_companion",
-        "kind": "command_hint",
+        "kind": "deep_link",
         "label": "Start Desktop Companion",
-        "command": "npm run start:pet"
+        "uri": "hermes-desktop-companion://start",
+        "fallback_command": "npm run start:pet"
       },
       {
         "id": "open_pet_gallery",
-        "kind": "sidecar_path",
+        "kind": "deep_link",
         "label": "Open Pet Gallery",
+        "uri": "hermes-desktop-companion://gallery",
         "path": "/pet/gallery",
         "requires": [
-          "loopback-sidecar"
+          "native-host"
         ]
       }
     ]

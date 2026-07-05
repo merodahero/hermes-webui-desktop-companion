@@ -31,15 +31,17 @@ Returns:
       "url": "https://github.com/franksong2702/hermes-webui-desktop-companion#first-time-setup"
     },
     "start": {
-      "kind": "command_hint",
+      "kind": "deep_link",
       "label": "Start Desktop Companion",
-      "command": "npm run start:pet"
+      "uri": "hermes-desktop-companion://start",
+      "fallback_command": "npm run start:pet"
     },
     "manager": {
-      "kind": "sidecar_path",
+      "kind": "deep_link",
       "label": "Open Pet Gallery",
+      "uri": "hermes-desktop-companion://gallery",
       "path": "/pet/gallery",
-      "requires": ["loopback-sidecar"]
+      "requires": ["native-host"]
     },
     "health": {
       "path": "/health"
@@ -53,16 +55,18 @@ Returns:
       },
       {
         "id": "start_desktop_companion",
-        "kind": "command_hint",
+        "kind": "deep_link",
         "label": "Start Desktop Companion",
-        "command": "npm run start:pet"
+        "uri": "hermes-desktop-companion://start",
+        "fallback_command": "npm run start:pet"
       },
       {
         "id": "open_pet_gallery",
-        "kind": "sidecar_path",
+        "kind": "deep_link",
         "label": "Open Pet Gallery",
+        "uri": "hermes-desktop-companion://gallery",
         "path": "/pet/gallery",
-        "requires": ["loopback-sidecar"]
+        "requires": ["native-host"]
       }
     ]
   },
@@ -90,10 +94,12 @@ is the latest WebUI snapshot timestamp in Unix seconds when available.
 
 The optional `management` object describes user-facing management affordances
 for WebUI extension settings. `install` is an external trusted-local setup link,
-`start` is a command hint for the local checkout, and `manager` is a sidecar
-path that can be opened only after the loopback runtime is already running.
-These fields are descriptive contract metadata; they do not grant WebUI
-permission to silently install native code or launch a process.
+`start` is an operating-system deep link for the installed native app, and
+`manager` is a deep link that starts Desktop Companion if needed and then opens
+Pet Gallery. `fallback_command` is for local development docs and should not be
+executed silently by WebUI. These fields are descriptive contract metadata; they
+do not grant WebUI permission to silently install native code or launch a
+process.
 
 ## `POST /api/webui/snapshot`
 
