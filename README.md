@@ -223,25 +223,25 @@ The app first checks the loopback sidecar at `127.0.0.1:17787`. If it is not
 running, it starts the bundled sidecar resources or a local repo checkout
 pointed to by `HERMES_DESKTOP_COMPANION_REPO`.
 
-#### macOS package
+#### Source-built macOS app
 
-Build a local macOS package with:
+Build the local macOS app bundle with:
 
 ```bash
-npm run desktop:package
+npm run desktop:build
 ```
 
-The Tauri build produces a `.app` bundle and `.dmg` under
-`desktop-pet/src-tauri/target/release/bundle/`. For macOS deep-link testing,
-copy the `.app` to `/Applications`, then run:
+The Tauri build produces a `.app` bundle under
+`desktop-pet/src-tauri/target/release/bundle/macos/`. For macOS deep-link
+testing, copy the `.app` to `/Applications` or launch it once from the build
+output, then run:
 
 ```bash
 open "hermes-desktop-companion://gallery"
 ```
 
-Unsigned local builds are for development validation. Public distribution still
-needs Developer ID signing and notarization before users should treat the DMG as
-a trusted release artifact.
+This project currently targets source-built local usage. It does not publish a
+signed or notarized macOS installer.
 
 ### Manual extension mode
 
@@ -291,11 +291,11 @@ expected flow is:
    `hermes-desktop-companion://gallery` to start/focus the native host.
 4. Reload WebUI so the browser adapter can post snapshots to the sidecar.
 
-The Gallery entry intentionally does not install or auto-start the native
-sidecar/Tauri host. Those remain local Desktop Companion runtime processes.
-Future WebUI extension settings can read the manifest `management` field or the
-sidecar `/health` response to show install, start, health, and Pet Gallery
-actions in one place.
+The Gallery entry intentionally does not install the native sidecar/Tauri host.
+Those remain local Desktop Companion runtime processes. Future WebUI extension
+settings can read the manifest `management` field or the sidecar `/health`
+response to show source setup, start, health, and Pet Gallery actions in one
+place.
 
 Older WebUI builds without `HERMES_WEBUI_EXTENSION_MANIFEST` can still load the
 adapter with explicit asset lists:
@@ -404,8 +404,8 @@ The root package currently has no runtime npm dependencies. The native Tauri
 shell manages its own dependencies under `desktop-pet/`, and
 `npm run start:pet` installs them when missing.
 
-For packaging work, `npm run desktop:package` delegates to Tauri and builds the
-configured macOS `.app` and `.dmg` targets.
+For source-built app work, `npm run desktop:build` delegates to Tauri and builds
+the configured macOS `.app` target.
 
 ## Extension-library fit
 

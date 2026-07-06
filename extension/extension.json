@@ -24,9 +24,9 @@
     "version": 1,
     "install": {
       "kind": "external_url",
-      "label": "Install Desktop Companion",
+      "label": "Set up from source",
       "url": "https://github.com/franksong2702/hermes-webui-desktop-companion#first-time-setup",
-      "description": "Install or clone the trusted local Desktop Companion runtime."
+      "description": "Clone, build, and run the trusted local Desktop Companion runtime from source."
     },
     "start": {
       "kind": "deep_link",
@@ -52,7 +52,7 @@
       {
         "id": "install_desktop_companion",
         "kind": "external_url",
-        "label": "Install Desktop Companion",
+        "label": "Set up from source",
         "url": "https://github.com/franksong2702/hermes-webui-desktop-companion#first-time-setup"
       },
       {

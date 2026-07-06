@@ -159,20 +159,21 @@ command is documentation for local development.
    npm run desktop:dev
    ```
 
-For installed-app validation on macOS, build the app and DMG with:
+For source-built app validation on macOS, build the app bundle with:
 
 ```bash
-npm run desktop:package
+npm run desktop:build
 ```
 
-Install the generated app bundle, then trigger:
+Launch or copy the generated app bundle, then trigger:
 
 ```bash
 open "hermes-desktop-companion://gallery"
 ```
 
-macOS deep links are registered by the installed app bundle, not by the WebUI
-Gallery entry.
+macOS deep links are registered by the source-built app bundle, not by the WebUI
+Gallery entry. This repo does not currently publish a signed or notarized
+macOS installer.
 
 ## Trust model
 

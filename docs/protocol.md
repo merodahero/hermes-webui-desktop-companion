@@ -27,7 +27,7 @@ Returns:
     "version": 1,
     "install": {
       "kind": "external_url",
-      "label": "Install Desktop Companion",
+      "label": "Set up from source",
       "url": "https://github.com/franksong2702/hermes-webui-desktop-companion#first-time-setup"
     },
     "start": {
@@ -50,7 +50,7 @@ Returns:
       {
         "id": "install_desktop_companion",
         "kind": "external_url",
-        "label": "Install Desktop Companion",
+        "label": "Set up from source",
         "url": "https://github.com/franksong2702/hermes-webui-desktop-companion#first-time-setup"
       },
       {

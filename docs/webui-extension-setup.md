@@ -71,9 +71,10 @@ hermes-desktop-companion://gallery
 ```
 
 The `gallery` link starts or focuses Desktop Companion and opens Pet Gallery /
-Manager. Build the local `.app` and `.dmg` with `npm run desktop:package`; for
-macOS deep-link testing, install the app bundle before running `open
-"hermes-desktop-companion://gallery"`.
+Manager. Build the local `.app` with `npm run desktop:build`; for macOS
+deep-link testing, launch or copy the app bundle before running `open
+"hermes-desktop-companion://gallery"`. This repo does not currently publish a
+signed or notarized macOS installer.
 
 For older WebUI builds without `HERMES_WEBUI_EXTENSION_MANIFEST`, fall back to
 the explicit URL-list configuration:

@@ -68,9 +68,9 @@ test('health returns service metadata', async () => {
   assert.equal(body.management.version, 1);
   assert.deepEqual(body.management.install, {
     kind: 'external_url',
-    label: 'Install Desktop Companion',
+    label: 'Set up from source',
     url: 'https://github.com/franksong2702/hermes-webui-desktop-companion#first-time-setup',
-    description: 'Install or clone the trusted local Desktop Companion runtime.'
+    description: 'Clone, build, and run the trusted local Desktop Companion runtime from source.'
   });
   assert.deepEqual(body.management.start, {
     kind: 'deep_link',

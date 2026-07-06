@@ -9,7 +9,6 @@
     "start:pet": "node scripts/start-pet.mjs",
     "desktop:dev": "npm --prefix desktop-pet run dev",
     "desktop:build": "npm --prefix desktop-pet run build",
-    "desktop:package": "npm --prefix desktop-pet run build",
     "test": "node --test",
     "check": "npm test"
   },

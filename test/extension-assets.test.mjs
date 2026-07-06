@@ -640,7 +640,7 @@ test('desktop pet keeps the migrated PR2916 bubble window choreography', async (
   assert.match(tauriMainText, /fn handle_companion_deep_link/);
   assert.match(tauriMainText, /ensure_loopback_sidecar/);
   assert.deepEqual(tauriConfig.plugins['deep-link'].desktop.schemes, ['hermes-desktop-companion']);
-  assert.deepEqual(tauriConfig.bundle.targets, ['app', 'dmg']);
+  assert.deepEqual(tauriConfig.bundle.targets, ['app']);
   assert.deepEqual(tauriConfig.bundle.resources, {
     '../../src/': 'companion/src',
     '../../extension/': 'companion/extension',
@@ -690,9 +690,9 @@ test('extension metadata follows the PR10 extension entry shape', async () => {
   assert.equal(entry.management.version, 1);
   assert.deepEqual(entry.management.install, {
     kind: 'external_url',
-    label: 'Install Desktop Companion',
+    label: 'Set up from source',
     url: 'https://github.com/franksong2702/hermes-webui-desktop-companion#first-time-setup',
-    description: 'Install or clone the trusted local Desktop Companion runtime.'
+    description: 'Clone, build, and run the trusted local Desktop Companion runtime from source.'
   });
   assert.deepEqual(entry.management.start, {
     kind: 'deep_link',

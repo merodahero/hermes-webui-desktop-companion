@@ -1404,9 +1404,9 @@ export function createServer(options = {}) {
       version: MANAGEMENT_CONTRACT_VERSION,
       install: {
         kind: 'external_url',
-        label: 'Install Desktop Companion',
+        label: 'Set up from source',
         url: DESKTOP_COMPANION_INSTALL_URL,
-        description: 'Install or clone the trusted local Desktop Companion runtime.'
+        description: 'Clone, build, and run the trusted local Desktop Companion runtime from source.'
       },
       start: {
         kind: 'deep_link',
@@ -1430,7 +1430,7 @@ export function createServer(options = {}) {
         {
           id: 'install_desktop_companion',
           kind: 'external_url',
-          label: 'Install Desktop Companion',
+          label: 'Set up from source',
           url: DESKTOP_COMPANION_INSTALL_URL
         },
         {
