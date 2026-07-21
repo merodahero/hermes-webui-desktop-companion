@@ -36,7 +36,7 @@ desktop-companion/
 The library entry should point to this repository for the sidecar and native
 host source instead of vendoring the full Tauri project into the library repo.
 
-`extension/extension.json` is the PR #10-style author metadata source. It
+`extension/extension.json` is the extension-library author metadata source. It
 declares identity, assets, shipped capabilities, sidecar metadata, purpose-based
 permissions, and lifecycle behavior. `extension/manifest.json` is still kept for
 today's Hermes WebUI loader, which consumes the minimal runtime manifest
@@ -53,8 +53,8 @@ The entry metadata declares only shipped capabilities today:
 }
 ```
 
-It must not declare `sidecar-proxy` until Hermes WebUI core ships that
-capability.
+It should not declare a separate `sidecar-proxy` capability. The sidecar
+authentication posture is expressed in `sidecar.proxy_auth`.
 
 The metadata should declare the sidecar shape:
 
@@ -63,15 +63,25 @@ The metadata should declare the sidecar shape:
   "sidecar": {
     "type": "loopback",
     "origin": "http://127.0.0.1:17787",
-    "health_path": "/health"
+    "health_path": "/health",
+    "proxy_auth": "legacy",
+    "runtime": {
+      "kind": "external",
+      "repository": "https://github.com/franksong2702/hermes-webui-desktop-companion"
+    }
   }
 }
 ```
 
-This is descriptive metadata. It should not claim that WebUI can install,
-auto-start, proxy, or manage the sidecar until those contracts exist upstream.
+This declares Desktop Companion as an external runtime under the sidecar
+contract from `hermes-webui/hermes-webui-extensions#65`. The runtime stays
+explicitly `legacy` because the current WebUI adapter calls the Node sidecar
+directly. It should not claim that WebUI can install, auto-start, proxy, or
+manage the sidecar. A token-v1 migration would require equivalent token
+validation in the Node dispatch path and adapter calls through WebUI's sidecar
+proxy.
 
-The entry uses the PR #10 lifecycle split:
+The entry uses the extension-library lifecycle split:
 
 ```json
 {
@@ -183,6 +193,7 @@ This is a trusted local extension:
 - it can call WebUI APIs available to the logged-in user
 - it does not render browser UI
 - the loopback sidecar binds to `127.0.0.1` by default
+- the extension metadata declares the sidecar as external and legacy
 - the sidecar is not a public HTTP service
 - native desktop behavior stays outside WebUI core
 
@@ -205,8 +216,8 @@ upstream direction:
 - Extension manifest bundles: already supported by Hermes WebUI through
   `HERMES_WEBUI_EXTENSION_MANIFEST`.
 - Extension status diagnostics: useful for install troubleshooting.
-- Sidecar manifest metadata: proposed contract for Desktop Companion-style
-  loopback helpers.
+- Sidecar manifest metadata: current external/legacy declaration for Desktop
+  Companion-style loopback helpers.
 - Extension settings/status panel: future place to show sidecar health.
 - Extension management actions: future place to render the manifest `management`
   install/start/Pet Gallery actions.
@@ -222,7 +233,7 @@ start with a small PR:
 - include the `extension.json` source metadata
 - include the runtime `manifest.json` only if maintainers still want the
   derived loader manifest checked in during the transition
-- link to this repo for the source and sidecar
+- link to this repo for the external runtime source and sidecar
 - document the trust model
 - document compatibility and sidecar health expectations
 - list the current limitation that backend behavior uses a local loopback

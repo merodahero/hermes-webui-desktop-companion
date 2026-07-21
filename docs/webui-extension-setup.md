@@ -14,8 +14,8 @@ npm run start:pet
 Desktop Pet host. If the `desktop-pet` package dependencies are missing, the
 script installs them first. Stop both processes with `Ctrl-C`.
 
-`extension/manifest.json` lists the companion adapter script. It also declares a
-descriptive loopback sidecar at
+`extension/manifest.json` lists the companion adapter script. It also declares
+the companion as an external legacy loopback sidecar at
 `http://127.0.0.1:17787/health`. This is the preferred path for WebUI builds
 that include extension manifest support.
 
@@ -62,6 +62,9 @@ installs the WebUI bridge; this repo still owns the local sidecar and native pet
 host. `extension/extension.json` and `/health` expose descriptive management
 metadata so WebUI can eventually show install, start, health, and Pet Gallery
 actions without treating the extension install itself as native app install.
+The current sidecar posture is `proxy_auth: "legacy"` because the adapter calls
+the local Node sidecar directly. Moving to token-v1 later requires token
+validation in this runtime and adapter calls through WebUI's sidecar proxy.
 
 Installed macOS builds also register:
 

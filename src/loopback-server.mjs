@@ -28,7 +28,11 @@ const PET_FRAMES_PER_STATE = 6;
 const PET_GALLERY_MANIFEST_URL = 'https://petdex.dev/api/manifest';
 const PET_GALLERY_SEARCH_URL = 'https://petdex.dev/api/pets/search';
 const PET_GALLERY_INSTALL_URL = 'https://petdex.dev/api/install-pet';
-const DESKTOP_COMPANION_INSTALL_URL = 'https://github.com/franksong2702/hermes-webui-desktop-companion#first-time-setup';
+const DESKTOP_COMPANION_REPOSITORY_URL = 'https://github.com/franksong2702/hermes-webui-desktop-companion';
+const DESKTOP_COMPANION_INSTALL_URL = `${DESKTOP_COMPANION_REPOSITORY_URL}#first-time-setup`;
+const DESKTOP_COMPANION_SIDECAR_ORIGIN = 'http://127.0.0.1:17787';
+const DESKTOP_COMPANION_SIDECAR_HEALTH_PATH = '/health';
+const DESKTOP_COMPANION_PROXY_AUTH = 'legacy';
 const DESKTOP_COMPANION_START_COMMAND = 'npm run start:pet';
 const DESKTOP_COMPANION_START_URI = 'hermes-desktop-companion://start';
 const DESKTOP_COMPANION_MANAGER_URI = 'hermes-desktop-companion://gallery';
@@ -133,6 +137,26 @@ function sendHead(res, status, contentType, contentLength = 0, headers = {}) {
     ...headers
   });
   res.end();
+}
+
+function sidecarContract() {
+  return {
+    type: 'loopback',
+    origin: DESKTOP_COMPANION_SIDECAR_ORIGIN,
+    health_path: DESKTOP_COMPANION_SIDECAR_HEALTH_PATH,
+    proxy_auth: DESKTOP_COMPANION_PROXY_AUTH,
+    runtime: {
+      kind: 'external',
+      repository: DESKTOP_COMPANION_REPOSITORY_URL
+    }
+  };
+}
+
+function healthHeaders(headers = {}) {
+  return {
+    ...headers,
+    'cache-control': 'no-store'
+  };
 }
 
 function defaultPreferencePath() {
@@ -1629,7 +1653,7 @@ export function createServer(options = {}) {
     try {
       if (req.method === 'HEAD') {
         if (url.pathname === '/health') {
-          sendHead(res, 200, 'application/json; charset=utf-8', 0, headers);
+          sendHead(res, 200, 'application/json; charset=utf-8', 0, healthHeaders(headers));
           return;
         }
         if (url.pathname === '/' || url.pathname === '/pet' || url.pathname === '/pet/' || url.pathname === '/pet/bubbles' || url.pathname === '/pet/bubbles/' || url.pathname === '/pet/gallery' || url.pathname === '/pet/gallery/') {
@@ -1679,13 +1703,10 @@ export function createServer(options = {}) {
           service: SERVICE_NAME,
           name: DISPLAY_NAME,
           version: VERSION,
-          sidecar: {
-            type: 'loopback',
-            health_path: '/health'
-          },
+          sidecar: sidecarContract(),
           management: managementContract(),
           runtime: runtimeStatus()
-        }, headers);
+        }, healthHeaders(headers));
         return;
       }
 

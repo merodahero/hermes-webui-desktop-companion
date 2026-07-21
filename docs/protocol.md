@@ -21,7 +21,13 @@ Returns:
   "version": "0.1.0",
   "sidecar": {
     "type": "loopback",
-    "health_path": "/health"
+    "origin": "http://127.0.0.1:17787",
+    "health_path": "/health",
+    "proxy_auth": "legacy",
+    "runtime": {
+      "kind": "external",
+      "repository": "https://github.com/franksong2702/hermes-webui-desktop-companion"
+    }
   },
   "management": {
     "version": 1,
@@ -83,7 +89,8 @@ Returns:
 
 The `ok`, `service`, and `version` fields are retained for simple scripts. The
 `status`, `name`, and `sidecar` fields are intended for future WebUI extension
-settings or diagnostics panels.
+settings or diagnostics panels. Health responses include
+`Cache-Control: no-store` so WebUI does not cache stale runtime state.
 
 The optional `runtime` object is machine-readable status for generic
 sidecar/native extensions. `sidecar` reports the loopback process state,
@@ -100,6 +107,12 @@ Pet Gallery. `fallback_command` is for local development docs and should not be
 executed silently by WebUI. These fields are descriptive contract metadata; they
 do not grant WebUI permission to silently install native code or launch a
 process.
+
+Desktop Companion is declared as an external legacy sidecar under the Hermes
+WebUI extension-library sidecar contract. It does not vendor the canonical
+Python scaffold; this repository owns the Node/Tauri runtime. It also does not
+yet validate `X-Hermes-Sidecar-Token`, so WebUI adapters continue to use direct
+loopback access until a future token-v1 migration is implemented.
 
 ## `POST /api/webui/snapshot`
 

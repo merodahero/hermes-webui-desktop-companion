@@ -10,6 +10,9 @@ as the main WebUI extension APIs roll forward.
 - Same-origin extension asset serving under `/extensions/`.
 - Browser access to existing authenticated WebUI session APIs.
 - Local loopback access from the WebUI page to `http://127.0.0.1:17787`.
+- The extension-library sidecar contract merged in
+  `hermes-webui/hermes-webui-extensions#65`, with Desktop Companion declared as
+  an external legacy runtime.
 
 The current adapter also uses guarded Hermes WebUI browser globals because core
 does not yet expose a formal extension runtime API for live session state:
@@ -25,7 +28,7 @@ WebUI page when a global is absent or changes shape.
 
 ## Declared Extension Metadata
 
-- PR #10-style `extension.json` entry metadata:
+- Extension-library `extension.json` entry metadata:
   - `capabilities: ["manifest-bundle", "loopback-sidecar"]`
   - lifecycle split for WebUI assets, sidecar start, and native host start
   - purpose-based permissions for WebUI API reads, navigation, storage, DOM,
@@ -34,6 +37,9 @@ WebUI page when a global is absent or changes shape.
   - `type: "loopback"`
   - `origin: "http://127.0.0.1:17787"`
   - `health_path: "/health"`
+  - `proxy_auth: "legacy"`
+  - `runtime.kind: "external"` in `extension.json`
+  - `runtime.repository: "https://github.com/franksong2702/hermes-webui-desktop-companion"` in `extension.json`
 - Entry and health `management` metadata:
   - `install.kind: "external_url"`
   - `start.kind: "deep_link"` with `hermes-desktop-companion://start`
@@ -42,10 +48,11 @@ WebUI page when a global is absent or changes shape.
 
 Current Hermes WebUI builds can surface sanitized sidecar diagnostics, perform
 browser-side health checks, and expose consent-gated fixed sidecar proxy paths
-for declared loopback sidecars. Desktop Companion does not require the proxy for
-its current browser adapter path, but the metadata should stay accurate so WebUI
-can display sidecar health and future companion capabilities have a stable
-place to attach.
+for declared token-v1 loopback sidecars. Desktop Companion does not use the
+proxy for its current browser adapter path, so it stays explicitly
+`proxy_auth: "legacy"`. A future token-v1 migration would require the Node
+sidecar to validate `X-Hermes-Sidecar-Token` at one dispatch boundary and the
+browser adapter to move sensitive sidecar calls behind WebUI's sidecar proxy.
 
 ## Current Health Contract
 
@@ -60,7 +67,13 @@ place to attach.
   "version": "0.1.0",
   "sidecar": {
     "type": "loopback",
-    "health_path": "/health"
+    "origin": "http://127.0.0.1:17787",
+    "health_path": "/health",
+    "proxy_auth": "legacy",
+    "runtime": {
+      "kind": "external",
+      "repository": "https://github.com/franksong2702/hermes-webui-desktop-companion"
+    }
   },
   "management": {
     "version": 1,
@@ -81,8 +94,8 @@ place to attach.
 - `npm test`
 - `node --check extension/companion-adapter.js`
 - confirm `extension/manifest.json` parses as JSON
-- confirm `extension/extension.json` parses as JSON and matches the PR #10
-  entry shape
+- confirm `extension/extension.json` parses as JSON and declares the external
+  legacy sidecar contract
 - confirm `/health` returns `status: "ok"`
 - confirm the installed macOS app handles `hermes-desktop-companion://gallery`
 - confirm WebUI loads the adapter from Gallery install or the manifest bundle

@@ -35,13 +35,17 @@ Responsibilities:
 The loopback protocol is deliberately HTTP/JSON for the first scaffold. It is
 easy to inspect, easy to replace from WinUI, and does not require WebUI changes.
 
-The sidecar is declared in `extension/manifest.json` with `type`, `origin`, and
-`health_path` metadata. That declaration is descriptive until the main Hermes
-WebUI repo ships a formal sidecar manifest contract.
+The sidecar is declared in extension metadata with `type`, `origin`,
+`health_path`, and `proxy_auth` fields. Under the Hermes WebUI extension-library
+sidecar contract, Desktop Companion is an external legacy runtime: this repo
+owns the Node/Tauri sidecar process instead of vendoring the canonical Python
+scaffold into the extension library.
 
 If Hermes WebUI later ships an official extension backend bridge, this sidecar
 can become the compatibility target or be replaced by that bridge without
-moving desktop-only code into WebUI core.
+moving desktop-only code into WebUI core. A token-v1 migration would require the
+Node sidecar to validate WebUI-injected sidecar tokens and the browser adapter
+to route sensitive sidecar calls through WebUI's proxy.
 
 ## 3. Native desktop host
 

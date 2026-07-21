@@ -18,7 +18,12 @@
   "sidecar": {
     "type": "loopback",
     "origin": "http://127.0.0.1:17787",
-    "health_path": "/health"
+    "health_path": "/health",
+    "proxy_auth": "legacy",
+    "runtime": {
+      "kind": "external",
+      "repository": "https://github.com/franksong2702/hermes-webui-desktop-companion"
+    }
   },
   "management": {
     "version": 1,
@@ -80,26 +85,46 @@
     "native_host_start_required": true,
     "native_host_autostart": "extension_owned"
   },
+  "post_install": {
+    "summary": "Install enables the WebUI bridge. In the Desktop Companion repo, run npm run start:pet to launch the desktop pet.",
+    "docs_url": "https://github.com/franksong2702/hermes-webui-desktop-companion#after-gallery-install",
+    "requires_local_app": true,
+    "local_app_label": "Desktop Companion app"
+  },
   "screenshots": [],
   "permissions": {
     "webui_api": {
       "read": [
         "sessions",
-        "session"
+        "session",
+        "approval/pending",
+        "clarify/pending"
       ],
       "write": [
+        "session/draft",
         "approval/respond",
-        "clarify/respond",
-        "session/draft"
+        "clarify/respond"
       ]
     },
     "webui_navigation": true,
+    "sidecar_commands": {
+      "from_loopback": true,
+      "can_switch_sessions": true,
+      "can_write_drafts": true,
+      "can_autosend": true,
+      "autosend_default": false,
+      "can_respond_approval": true,
+      "can_respond_clarify": true,
+      "approval_clarify_response_default": false
+    },
     "dom": {
       "owned": false,
-      "mutates_core_views": true
+      "mutates_core_views": false
     },
     "storage": {
       "owned": [
+        "hermes-pet-navigation-last-id",
+        "hermes-pet-action-last-id"
       ],
       "shared_webui_keys": [
         "hermes-session-viewed-counts",

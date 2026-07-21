@@ -122,13 +122,23 @@ sidecar:
   "sidecar": {
     "type": "loopback",
     "origin": "http://127.0.0.1:17787",
-    "health_path": "/health"
+    "health_path": "/health",
+    "proxy_auth": "legacy",
+    "runtime": {
+      "kind": "external",
+      "repository": "https://github.com/franksong2702/hermes-webui-desktop-companion"
+    }
   }
 }
 ```
 
-Hermes WebUI can use this field for extension diagnostics, sidecar health
-display, and any consent-gated fixed sidecar proxy surface it supports. It still
+Hermes WebUI can use this field for extension diagnostics and sidecar health
+display. Under the Hermes WebUI extension-library sidecar contract, Desktop
+Companion is an external runtime: this repo owns the Node/Tauri loopback process
+instead of vendoring the Python scaffold into the extension library. The current
+adapter remains explicitly `legacy` because it still talks directly to loopback;
+a future token-v1 migration would need equivalent token validation in this Node
+runtime and an adapter path through WebUI's sidecar proxy. This metadata still
 does not imply auto-install, auto-start, or native host permission.
 
 `extension/extension.json` also declares a small management contract for future
@@ -373,13 +383,14 @@ Current required WebUI capabilities:
 - same-origin extension assets under `/extensions/`
 - browser access to existing authenticated WebUI session APIs
 - loopback browser access to `http://127.0.0.1:17787`
+- external sidecar metadata with `proxy_auth: "legacy"`
 
 Current optional WebUI capabilities:
 
 - sanitized sidecar diagnostics and browser-side health display from the
   manifest `sidecar` declaration
-- consent-gated fixed sidecar proxy paths for extensions that need same-origin
-  browser requests to a declared loopback helper
+- consent-gated fixed sidecar proxy paths for token-v1 extensions that need
+  same-origin browser requests to a declared loopback helper
 - browser-local extension settings/storage if a future Desktop Companion
   manifest needs user-editable extension settings
 
@@ -415,7 +426,8 @@ richer trusted-local example, not as a WebUI core patch:
 - extension assets are packaged by `extension/manifest.json`
 - WebUI core changes are not required
 - the local sidecar binds to `127.0.0.1` and owns desktop-only protocol state
-- the manifest documents the sidecar with `type`, `origin`, and `health_path`
+- the manifest documents the external legacy sidecar with `type`, `origin`,
+  `health_path`, and `proxy_auth`
 - the Tauri host remains outside Hermes WebUI
 - official WebUI extension backend support can replace or formalize the sidecar
   boundary when that upstream API is ready

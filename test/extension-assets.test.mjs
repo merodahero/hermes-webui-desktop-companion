@@ -664,11 +664,12 @@ test('extension manifest bundles adapter assets', async () => {
   assert.deepEqual(entry.sidecar, {
     type: 'loopback',
     origin: 'http://127.0.0.1:17787',
-    health_path: '/health'
+    health_path: '/health',
+    proxy_auth: 'legacy'
   });
 });
 
-test('extension metadata follows the PR10 extension entry shape', async () => {
+test('extension metadata follows the external sidecar contract', async () => {
   const entryText = await readFile(new URL('../extension/extension.json', import.meta.url), 'utf8');
   const entry = JSON.parse(entryText);
 
@@ -685,7 +686,12 @@ test('extension metadata follows the PR10 extension entry shape', async () => {
   assert.deepEqual(entry.sidecar, {
     type: 'loopback',
     origin: 'http://127.0.0.1:17787',
-    health_path: '/health'
+    health_path: '/health',
+    proxy_auth: 'legacy',
+    runtime: {
+      kind: 'external',
+      repository: 'https://github.com/franksong2702/hermes-webui-desktop-companion'
+    }
   });
   assert.equal(entry.management.version, 1);
   assert.deepEqual(entry.management.install, {
@@ -723,17 +729,36 @@ test('extension metadata follows the PR10 extension entry shape', async () => {
     native_host_start_required: true,
     native_host_autostart: 'extension_owned'
   });
+  assert.deepEqual(entry.post_install, {
+    summary: 'Install enables the WebUI bridge. In the Desktop Companion repo, run npm run start:pet to launch the desktop pet.',
+    docs_url: 'https://github.com/franksong2702/hermes-webui-desktop-companion#after-gallery-install',
+    requires_local_app: true,
+    local_app_label: 'Desktop Companion app'
+  });
   assert.deepEqual(entry.permissions.webui_api, {
-    read: ['sessions', 'session'],
-    write: ['approval/respond', 'clarify/respond', 'session/draft']
+    read: ['sessions', 'session', 'approval/pending', 'clarify/pending'],
+    write: ['session/draft', 'approval/respond', 'clarify/respond']
   });
   assert.equal(entry.permissions.webui_navigation, true);
+  assert.deepEqual(entry.permissions.sidecar_commands, {
+    from_loopback: true,
+    can_switch_sessions: true,
+    can_write_drafts: true,
+    can_autosend: true,
+    autosend_default: false,
+    can_respond_approval: true,
+    can_respond_clarify: true,
+    approval_clarify_response_default: false
+  });
   assert.deepEqual(entry.permissions.dom, {
     owned: false,
-    mutates_core_views: true
+    mutates_core_views: false
   });
   assert.deepEqual(entry.permissions.storage, {
-    owned: [],
+    owned: [
+      'hermes-pet-navigation-last-id',
+      'hermes-pet-action-last-id'
+    ],
     shared_webui_keys: [
       'hermes-session-viewed-counts',
       'hermes-session-completion-unread'

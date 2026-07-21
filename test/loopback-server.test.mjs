@@ -56,9 +56,16 @@ test('health returns service metadata', async () => {
   assert.equal(body.service, 'hermes-webui-desktop-companion');
   assert.equal(body.name, 'Hermes WebUI Desktop Companion');
   assert.equal(body.version, '0.1.0');
+  assert.equal(response.headers.get('cache-control'), 'no-store');
   assert.deepEqual(body.sidecar, {
     type: 'loopback',
-    health_path: '/health'
+    origin: 'http://127.0.0.1:17787',
+    health_path: '/health',
+    proxy_auth: 'legacy',
+    runtime: {
+      kind: 'external',
+      repository: 'https://github.com/franksong2702/hermes-webui-desktop-companion'
+    }
   });
   assert.equal(body.runtime.sidecar, 'running');
   assert.equal(body.runtime.native_host, 'not_registered');
@@ -95,6 +102,13 @@ test('health returns service metadata', async () => {
   ]);
   assert.equal(body.management.actions[1].uri, 'hermes-desktop-companion://start');
   assert.equal(body.management.actions[2].uri, 'hermes-desktop-companion://gallery');
+});
+
+test('health HEAD is non-cacheable', async () => {
+  const response = await fetch(`${baseUrl}/health`, { method: 'HEAD' });
+
+  assert.equal(response.status, 200);
+  assert.equal(response.headers.get('cache-control'), 'no-store');
 });
 
 test('pet capabilities exposes pet pack contract metadata', async () => {
