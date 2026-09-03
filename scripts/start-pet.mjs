@@ -28,10 +28,14 @@ function runSetupIfNeeded() {
 }
 
 function start(label, args, extraEnv = {}) {
+  const isWin = process.platform === 'win32';
+  // Windows requires shell:true to spawn .cmd wrappers like npm.cmd;
+  // POSIX stays shell-free for detached process groups.
   const child = spawn(npmCmd, args, {
     cwd: repoRoot,
-    detached: process.platform !== 'win32',
+    detached: !isWin,
     stdio: 'inherit',
+    shell: isWin,
     env: { ...process.env, ...extraEnv }
   });
   child.on('exit', (code, signal) => {
